@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>func-graph</title>
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@13.0.0/lib/browser/math.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="column-container">
+
+    <div class="input-container">
+        
+        <div class="column-container">
+            <label for="func">Функция</label>
+            <input type="text" id="func">
+        </div>
+        <div class="column-container">
+            <label for="x1">x1</label>
+            <input type="text" id="x1">
+        </div>
+        <div class="column-container">
+            <label for="x2">x2</label>
+            <input type="text" id="x2">
+        </div>
+
+        <input type="button" id="draw-button" value="draw graph">
+    </div>
+
+    <canvas id="plot-screen" width="1000" height="1000"></canvas>
+</body>
+<style>
+    canvas {
+        image-rendering: pixelated; 
+        image-rendering: crisp-edges;
+    }
+</style>
+    <script src="code.js"></script>
+</html>
