@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализ цветовых каналов RGB</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .image-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        .channel-container {
+            text-align: center;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        canvas {
+            max-width: 300px;
+            max-height: 300px;
+        }
+        .histogram-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        .histogram-container {
+            width: 300px;
+            height: 200px;
+        }
+        .controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Анализ цветовых каналов RGB</h1>
+        
+        <div class="controls">
+            <input type="file" id="imageInput" accept="image/*">
+            <button onclick="processImage()">Анализировать изображение</button>
+        </div>
+
+        <div class="image-section">
+            <div class="channel-container">
+                <h3>Исходное изображение</h3>
+                <canvas id="originalCanvas"></canvas>
+            </div>
+            <div class="channel-container">
+                <h3>Красный канал (R)</h3>
+                <canvas id="redCanvas"></canvas>
+            </div>
+            <div class="channel-container">
+                <h3>Зеленый канал (G)</h3>
+                <canvas id="greenCanvas"></canvas>
+            </div>
+            <div class="channel-container">
+                <h3>Синий канал (B)</h3>
+                <canvas id="blueCanvas"></canvas>
+            </div>
+        </div>
+
+        <div class="histogram-section">
+            <div class="histogram-container">
+                <h3>Гистограмма красного канала</h3>
+                <canvas id="redHistogram"></canvas>
+            </div>
+            <div class="histogram-container">
+                <h3>Гистограмма зеленого канала</h3>
+                <canvas id="greenHistogram"></canvas>
+            </div>
+            <div class="histogram-container">
+                <h3>Гистограмма синего канала</h3>
+                <canvas id="blueHistogram"></canvas>
+            </div>
+        </div>
+
+        <div id="stats"></div>
+    </div>
+
+    <script>
+let originalImage = null;
+let imageData = null;
+
+document.getElementById('imageInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        originalImage = new Image();
+        originalImage.onload = function() {
+            displayOriginalImage();
+        };
+        originalImage.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+});
+
+function displayOriginalImage() {
+    const canvas = document.getElementById('originalCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const maxSize = 300;
+    let width = originalImage.width;
+    let height = originalImage.height;
+
+    if (width > maxSize || height > maxSize) {
+        const ratio = Math.min(maxSize / width, maxSize / height);
+        width *= ratio;
+        height *= ratio;
+    }
+    
+    canvas.width = width;
+    canvas.height = height;
+
+    ctx.drawImage(originalImage, 0, 0, width, height);
+
+    imageData = ctx.getImageData(0, 0, width, height);
+}
+
+
+function processImage() {
+    if (!imageData) {
+        alert('Пожалуйста, загрузите изображение сначала');
+        return;
+    }
+
+    extractColorChannels();
+
+    createHistograms();
+
+    displayStatistics();
+}
+
+// Выделение цветовых каналов
+function extractColorChannels() {
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+
+    const redData = new ImageData(width, height);
+    const greenData = new ImageData(width, height);
+    const blueData = new ImageData(width, height);
+    
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+
+        redData.data[i] = r;        // R
+        redData.data[i + 1] = 0;    // G
+        redData.data[i + 2] = 0;    // B
+        redData.data[i + 3] = a;    // A
+
+        greenData.data[i] = 0;      // R
+        greenData.data[i + 1] = g;  // G
+        greenData.data[i + 2] = 0;  // B
+        greenData.data[i + 3] = a;  // A
+        
+        blueData.data[i] = 0;       // R
+        blueData.data[i + 1] = 0;   // G
+        blueData.data[i + 2] = b;   // B
+        blueData.data[i + 3] = a;   // A
+    }
+
+    displayChannel(redData, 'redCanvas');
+    displayChannel(greenData, 'greenCanvas');
+    displayChannel(blueData, 'blueCanvas');
+}
+
+function displayChannel(channelData, canvasId) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = channelData.width;
+    canvas.height = channelData.height;
+    
+    ctx.putImageData(channelData, 0, 0);
+}
+
+function createHistograms() {
+    const data = imageData.data;
+    const redHistogram = new Array(256).fill(0);
+    const greenHistogram = new Array(256).fill(0);
+    const blueHistogram = new Array(256).fill(0);
+    for (let i = 0; i < data.length; i += 4) {
+        redHistogram[data[i]]++;
+        greenHistogram[data[i + 1]]++;
+        blueHistogram[data[i + 2]]++;
+    }
+    createSimpleHistogram(redHistogram, 'redHistogram', 'rgba(255, 0, 0, 0.5)');
+    createSimpleHistogram(greenHistogram, 'greenHistogram', 'rgba(0, 255, 0, 0.5)');
+    createSimpleHistogram(blueHistogram, 'blueHistogram', 'rgba(0, 0, 255, 0.5)');
+}
+
+function createSimpleHistogram(histogramData, canvasId, color) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    ctx.clearRect(0, 0, width, height);
+    
+    const maxValue = Math.max(...histogramData);
+
+    const barWidth = width / 256;
+    
+    for (let i = 0; i < 256; i++) {
+        const barHeight = (histogramData[i] / maxValue) * height;
+        ctx.fillStyle = color;
+        ctx.fillRect(i * barWidth, height - barHeight, barWidth, barHeight);
+    }
+    
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    ctx.lineTo(width, height);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    ctx.lineTo(0, 0);
+    ctx.stroke();
+    
+    ctx.fillStyle = '#000';
+    ctx.font = '12px Arial';
+    ctx.fillText('0', 0, height + 15);
+    ctx.fillText('255', width - 20, height + 15);
+}
+function displayStatistics() {
+    const data = imageData.data;
+    
+    let redSum = 0, greenSum = 0, blueSum = 0;
+    let redMin = 255, greenMin = 255, blueMin = 255;
+    let redMax = 0, greenMax = 0, blueMax = 0;
+    let pixelCount = data.length / 4;
+    
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        redSum += r;
+        greenSum += g;
+        blueSum += b;
+        
+        if (r < redMin) redMin = r;
+        if (g < greenMin) greenMin = g;
+        if (b < blueMin) blueMin = b;
+        
+        if (r > redMax) redMax = r;
+        if (g > greenMax) greenMax = g;
+        if (b > blueMax) blueMax = b;
+    }
+    
+    const stats = `
+        <h3>Статистика по каналам:</h3>
+        <table border="1" style="border-collapse: collapse; width: 100%;">
+            <tr>
+                <th>Канал</th>
+                <th>Минимум</th>
+                <th>Максимум</th>
+                <th>Среднее</th>
+            </tr>
+            <tr>
+                <td style="color: red;">Красный (R)</td>
+                <td>${redMin}</td>
+                <td>${redMax}</td>
+                <td>${(redSum / pixelCount).toFixed(2)}</td>
+            </tr>
+            <tr>
+                <td style="color: green;">Зеленый (G)</td>
+                <td>${greenMin}</td>
+                <td>${greenMax}</td>
+                <td>${(greenSum / pixelCount).toFixed(2)}</td>
+            </tr>
+            <tr>
+                <td style="color: blue;">Синий (B)</td>
+                <td>${blueMin}</td>
+                <td>${blueMax}</td>
+                <td>${(blueSum / pixelCount).toFixed(2)}</td>
+            </tr>
+        </table>
+    `;
+    
+    document.getElementById('stats').innerHTML = stats;
+}
+
+document.getElementById('imageInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        originalImage = new Image();
+        originalImage.onload = function() {
+            displayOriginalImage();
+            setTimeout(processImage, 100);
+        };
+        originalImage.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+});
+    </script>
+</body>
+</html>
