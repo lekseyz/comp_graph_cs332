@@ -1,4 +1,5 @@
 #include "stdio.h"
+#include "helper.h"
 
 #include "raylib.h"
 
@@ -18,8 +19,19 @@
 #define ELEMENTS_PADDING 2
 #pragma endregion
 
+typedef enum States {
+    POLYGON_DRAWING,
+    POLYGON_MOVMENT,
+    POLYGON_CENTER_CHANGING,
+    POLYGON_POINT_CHANGING,
+    LINE_CREATION,
+    INTERSECTION_CHECK,
+    SIDE_CHECK
+} States;
 
-
+void DrawPolygon(Image image, Color color, Polygon) {
+    
+}
 
 int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HIGHT, "Fill tools");
@@ -51,17 +63,39 @@ int main() {
     Vector2 prevMouseInner = {-1, -1};
     Vector2 curMouseInner = {-1, -1};
 
+    States state = POLYGON_DRAWING;
+    char* buttonActions[] = {"Create Polygon",
+                             "Move Polygon",
+                             "Change From Center",
+                             "Change From Point",
+                             "Create Line",
+                             "Check Polygon Intersection",
+                             "Check Point Side"};
+
     while(!WindowShouldClose()) {
         BeginDrawing(); // Начало зоны рисования
 
         ClearBackground(LIGHTGRAY);
         
-        
+        GuiLabel((Rectangle) {ELEMENTS_X, ELEMENTS_PADDING, ELEMENTS_WIDTH, ELEMENTS_HIGHT}, buttonActions[state]);
+
+        if (GuiButton((Rectangle) {ELEMENTS_X, ELEMENTS_PADDING * 2 + ELEMENTS_HIGHT, ELEMENTS_WIDTH, ELEMENTS_HIGHT}, "Clean")) {
+            // TODO: clean screen
+            printf("some cleaning stuff\n");
+        }
+
+        for (int i = 0; i < SIDE_CHECK; i++) {
+            if (GuiButton((Rectangle) {ELEMENTS_X, ELEMENTS_PADDING * (i + 3) + ELEMENTS_HIGHT * (i + 2), ELEMENTS_WIDTH, ELEMENTS_HIGHT}, buttonActions[i])) {
+                state = (States)i;
+            }
+        }
 
         Vector2 mousePosition = GetMousePosition();
         if (CheckCollisionPointRec(mousePosition, canvas)) {
             curMouseInner = (Vector2){ mousePosition.x -  borderWidth, mousePosition.y - borderWidth };
-            printf("Мышь находится внутри канваса. Знай это сучара");
+            
+            printf("мы сейчас находимся в состоянии %s", buttonActions[state]);
+            // TODO: states handling
         }
 
         GuiPanel(panel, NULL);  // Рисуем панель без названия (чисто границы)
