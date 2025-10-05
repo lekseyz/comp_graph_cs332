@@ -35,12 +35,13 @@ Polygon CreatePolygon(int n_args, ...) {
 
 // FIXED: Correct memory deallocation order
 void FreePolygon(Polygon polygon) {
-    if (polygon.verts == NULL || polygon.size == 0) return;
+    if (!polygon.verts) return;
 
     PolygonVert* currVert = polygon.verts;
+    PolygonVert* nextVert = NULL;
 
-    for (size_t i = 0; i < polygon.size; i++) {
-        PolygonVert* nextVert = currVert->next;
+    for (int i = 0; i < polygon.size; i++) {
+        nextVert = currVert->next;
         free(currVert);
         currVert = nextVert;
     }

@@ -227,23 +227,19 @@ int main() {
         if (GuiButton((Rectangle) { ELEMENTS_X, ELEMENTS_PADDING * 2 + ELEMENTS_HIGHT, ELEMENTS_WIDTH, ELEMENTS_HIGHT }, "Clean")) {
             canvasImage = GenImageColor(canvas.width, canvas.height, WHITE);
             UpdateTexture(canvasTexture, canvasImage.data);
-
-            if (lines) {
-                free(lines);
-                lines = NULL;
-            }
-            linesCount = 0;
-            isFirstPoint = true;
-
+            printf("Ceanitg polygons. Poligons to be deallocated: %d\n", polygonsCount);
             if (polygons) {
-                for (size_t i = 0; i < polygonsCount; i++) {
-                    FreePolygon(polygons[i]);
-                }
+                polygonsCount = 0;
                 free(polygons);
                 polygons = NULL;
             }
-            polygonsCount = 0;
-            curPolygon = NULL;
+            printf("Ceaning lines. Lines to be deallocated: %d\n", linesCount);
+            if (lines) {
+                free(lines);
+                linesCount = 0;
+                lines = NULL;
+            }
+            printf("Everything is clean. Poligons to be deallocated: %d\n", linesCount);
         }
 
         // Action buttons (FIXED: include SIDE_CHECK)
@@ -252,28 +248,35 @@ int main() {
                 state = (States)i;
 
                 switch (state) {
-                case POLYGON_DRAWING:
-                    if (polygonsCount == 0) {
-                        polygons = (Polygon*)malloc(sizeof(Polygon));
-                    }
-                    else {
-                        polygons = (Polygon*)realloc(polygons, (polygonsCount + 1) * sizeof(Polygon));
-                    }
-                    if (polygons) {
-                        polygons[polygonsCount] = CreatePolygon(0);
-                        curPolygon = &polygons[polygonsCount];
-                        polygonsCount++;
-                    }
-                    break;
-                case POLYGON_MOVMENT:
-                case POLYGON_CENTER_CHANGING:
-                case POLYGON_POINT_CHANGING:
-                case LINE_CREATION:
-                case INTERSECTION_CHECK:
-                case SIDE_CHECK:
-                    break;
-                default:
-                    break;
+                    case POLYGON_DRAWING:
+                        if (polygonsCount == 0) {
+                            polygons = (Polygon*)malloc(sizeof(Polygon));
+                            polygonsCount++;
+                        }
+                        else {
+                            polygonsCount++;
+                            polygons = (Polygon*)realloc(polygons, polygonsCount * sizeof(Polygon));
+                        }
+                        polygons[polygonsCount - 1] = CreatePolygon(0);
+                        curPolygon = polygons + (polygonsCount - 1);
+                        
+                        break;
+                    case POLYGON_CENTER_CHANGING:
+
+                        break;
+                    case POLYGON_POINT_CHANGING:
+
+                        break;
+                    case INTERSECTION_CHECK:
+
+                        break;
+                    case SIDE_CHECK:
+
+                        break;
+
+                    default:
+                        break;
+
                 }
             }
         }
