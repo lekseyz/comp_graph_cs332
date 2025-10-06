@@ -3,6 +3,7 @@
 #include "helper.h"
 #include "math.h"
 #include "inttypes.h"
+#include "string.h"
 
 #include "raylib.h"
 
@@ -86,7 +87,7 @@ void DrawBrezinheim(Image* image, Color color, Line line) {
         if (dx < 0) {
             BrezinheimLow(image, color, (Line) {
                 .start = line.end,
-                .end = line.start,
+                    .end = line.start,
             });
         }
         else {
@@ -97,7 +98,7 @@ void DrawBrezinheim(Image* image, Color color, Line line) {
         if (dy < 0) {
             BrezinheimHight(image, color, (Line) {
                 .start = line.end,
-                .end = line.start,
+                    .end = line.start,
             });
         }
         else {
@@ -107,7 +108,6 @@ void DrawBrezinheim(Image* image, Color color, Line line) {
 }
 
 void DrawPolygon(Image* image, Color color, Polygon polygon) {
-
     int xmin = INT32_MAX;
     int xmax = INT32_MIN;
     int ymin = INT32_MAX;
@@ -115,7 +115,7 @@ void DrawPolygon(Image* image, Color color, Polygon polygon) {
 
     PolygonVert* vert = polygon.verts;
     for (int i = 0; i < polygon.size; i++) {
-        Line line = (Line) {
+        Line line = (Line){
             .start = vert->cur,
             .end = vert->next->cur
         };
@@ -176,29 +176,24 @@ int main() {
 
     int borderWidth = GuiGetStyle(DEFAULT, BORDER_WIDTH);
 
-    /// Панель с границами
-    Rectangle panel = (Rectangle) { .x = 0,
+    Rectangle panel = (Rectangle){ .x = 0,
                                     .y = 0,
                                     .width = DRAW_BOX_WIDTH,
                                     .height = DRAW_BOX_HIGHT };
 
-    /// Канвас для рисования внутри панели
-    Rectangle canvas = (Rectangle) { .x = borderWidth,
+    Rectangle canvas = (Rectangle){ .x = borderWidth,
                                      .y = borderWidth,
                                      .width = DRAW_BOX_WIDTH - borderWidth * 2,
                                      .height = DRAW_BOX_HIGHT - borderWidth * 2 };
-    
 
-
-
-    Image canvasImage;      // Изображение канваса (2d массив для работы с изображением)
-    Texture canvasTexture;  // Текструа канваса - то же самое изображение, но уже загруженное на видеокарту
+    Image canvasImage;
+    Texture canvasTexture;
 
     canvasImage = GenImageColor(canvas.width, canvas.height, WHITE);
-    canvasTexture = LoadTextureFromImage(canvasImage);   // загружаем текструры на видекарту
+    canvasTexture = LoadTextureFromImage(canvasImage);
 
-    Vector2 prevMouseInner = {-1, -1};
-    Vector2 curMouseInner = {-1, -1};
+    Vector2 prevMouseInner = { -1, -1 };
+    Vector2 curMouseInner = { -1, -1 };
 
     Polygon* polygons = NULL;
     Polygon* curPolygon = NULL;
@@ -209,111 +204,233 @@ int main() {
     bool isFirstPoint = true;
 
     States state = 7;
-    char* buttonActions[] = {"Create Polygon",
+    char* buttonActions[] = { "Create Polygon",
                              "Move Polygon",
-                             "Change From Center",
-                             "Change From Point",
+                             "Change Center",
+                             "Change Point",
                              "Create Line",
-                             "Check Polygon Intersection",
+                             "Check Intersection",
                              "Check Point Side",
-                             "Doing Nothing"};
+                             "Doing Nothing" };
 
-    while(!WindowShouldClose()) {
-        BeginDrawing(); // Начало зоны рисования
+    bool showMessageBox = false;
+    char messageBoxText[1024] = { 0 };
+    int messageBoxResult = 0;
 
+    while (!WindowShouldClose()) {
+        BeginDrawing();
         ClearBackground(LIGHTGRAY);
-        
-        GuiLabel((Rectangle) {ELEMENTS_X, ELEMENTS_PADDING, ELEMENTS_WIDTH, ELEMENTS_HIGHT}, buttonActions[state]);
 
-        if (GuiButton((Rectangle) {ELEMENTS_X, ELEMENTS_PADDING * 2 + ELEMENTS_HIGHT, ELEMENTS_WIDTH, ELEMENTS_HIGHT}, "Clean")) {
+        GuiLabel((Rectangle) { ELEMENTS_X, ELEMENTS_PADDING, ELEMENTS_WIDTH, ELEMENTS_HIGHT }, buttonActions[state]);
+
+        // Clean button
+        if (GuiButton((Rectangle) { ELEMENTS_X, ELEMENTS_PADDING * 2 + ELEMENTS_HIGHT, ELEMENTS_WIDTH, ELEMENTS_HIGHT }, "Clean")) {
             canvasImage = GenImageColor(canvas.width, canvas.height, WHITE);
             UpdateTexture(canvasTexture, canvasImage.data);
+
+            if (lines) {
+                free(lines);
+                lines = NULL;
+            }
+            linesCount = 0;
+            isFirstPoint = true;
+
+            if (polygons) {
+                for (size_t i = 0; i < polygonsCount; i++) {
+                    FreePolygon(polygons[i]);
+                }
+                free(polygons);
+                polygons = NULL;
+            }
+            polygonsCount = 0;
+            curPolygon = NULL;
         }
 
-        for (int i = 0; i < SIDE_CHECK; i++) {
-            if (GuiButton((Rectangle) {ELEMENTS_X, ELEMENTS_PADDING * (i + 3) + ELEMENTS_HIGHT * (i + 2), ELEMENTS_WIDTH, ELEMENTS_HIGHT}, buttonActions[i])) {
+        // Action buttons (FIXED: include SIDE_CHECK)
+        for (int i = 0; i <= SIDE_CHECK; i++) {
+            if (GuiButton((Rectangle) { ELEMENTS_X, ELEMENTS_PADDING* (i + 3) + ELEMENTS_HIGHT * (i + 2), ELEMENTS_WIDTH, ELEMENTS_HIGHT }, buttonActions[i])) {
                 state = (States)i;
 
                 switch (state) {
-                    case POLYGON_DRAWING:
-                        if (polygonsCount == 0) {
-                            polygons = (Polygon*)malloc(sizeof(Polygon));
-                            polygonsCount++;
-                        }
-                        else {
-                            polygonsCount++;
-                            polygons = (Polygon*)realloc(polygons, polygonsCount * sizeof(Polygon));
-                        }
-                        polygons[polygonsCount - 1] = CreatePolygon(0);
-                        curPolygon = polygons + (polygonsCount - 1);
-                        break;
-                    case POLYGON_MOVMENT:
-
-                        break;
-                    case POLYGON_CENTER_CHANGING:
-
-                        break;
-                    case POLYGON_POINT_CHANGING:
-
-                        break;
-                    case INTERSECTION_CHECK:
-
-                        break;
-                    case SIDE_CHECK:
-
-                        break;
-
-                    default:
-                        break;
-
+                case POLYGON_DRAWING:
+                    if (polygonsCount == 0) {
+                        polygons = (Polygon*)malloc(sizeof(Polygon));
+                    }
+                    else {
+                        polygons = (Polygon*)realloc(polygons, (polygonsCount + 1) * sizeof(Polygon));
+                    }
+                    if (polygons) {
+                        polygons[polygonsCount] = CreatePolygon(0);
+                        curPolygon = &polygons[polygonsCount];
+                        polygonsCount++;
+                    }
+                    break;
+                case POLYGON_MOVMENT:
+                case POLYGON_CENTER_CHANGING:
+                case POLYGON_POINT_CHANGING:
+                case LINE_CREATION:
+                case INTERSECTION_CHECK:
+                case SIDE_CHECK:
+                    break;
+                default:
+                    break;
                 }
             }
         }
 
         Vector2 mousePosition = GetMousePosition();
-        if (CheckCollisionPointRec(mousePosition, canvas)) {
+        if (CheckCollisionPointRec(mousePosition, canvas) && !showMessageBox) {
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                curMouseInner = (Vector2){ mousePosition.x -  borderWidth, mousePosition.y - borderWidth };
-                
+                curMouseInner = (Vector2){ mousePosition.x - borderWidth, mousePosition.y - borderWidth };
+
                 switch (state)
                 {
                 case POLYGON_DRAWING:
-                    AddPolygonPoint(curPolygon, curMouseInner);
-                    DrawPolygon(&canvasImage, BLACK, *curPolygon);
-                    UpdateTexture(canvasTexture, canvasImage.data);
+                    if (curPolygon) {
+                        AddPolygonPoint(curPolygon, curMouseInner);
+                        DrawPolygon(&canvasImage, BLACK, *curPolygon);
+                        UpdateTexture(canvasTexture, canvasImage.data);
+                    }
                     break;
-                case LINE_CREATION: 
+
+                case LINE_CREATION:
                     if (isFirstPoint) {
-                        Line *tmp = (Line*)realloc(lines, (linesCount + 1) * sizeof(Line));
-                        if (!tmp) { perror("realloc"); break; }
+                        Line* tmp = (Line*)realloc(lines, (linesCount + 1) * sizeof(Line));
+                        if (!tmp) {
+                            snprintf(messageBoxText, sizeof(messageBoxText), "Memory error");
+                            showMessageBox = true;
+                            break;
+                        }
                         lines = tmp;
                         ImageDrawCircle(&canvasImage, curMouseInner.x, curMouseInner.y, 3, GREEN);
                         UpdateTexture(canvasTexture, canvasImage.data);
                         lines[linesCount].start = curMouseInner;
                         lines[linesCount].end = curMouseInner;
                         isFirstPoint = false;
-                    } else {
+                    }
+                    else {
                         lines[linesCount].end = curMouseInner;
                         ImageDrawCircle(&canvasImage, curMouseInner.x, curMouseInner.y, 3, GREEN);
                         DrawBrezinheim(&canvasImage, BLACK, lines[linesCount]);
-                        UpdateTexture(canvasTexture, canvasImage.data);
+
+                        // Auto-draw intersection points with previous lines
+                        for (size_t i = 0; i < linesCount; i++) {
+                            Vector2 intersection;
+                            if (GetLineIntersection(lines[i], lines[linesCount], &intersection)) {
+                                ImageDrawCircle(&canvasImage, (int)intersection.x, (int)intersection.y, 5, RED);
+                            }
+                        }
+
                         linesCount++;
                         isFirstPoint = true;
+                        UpdateTexture(canvasTexture, canvasImage.data);
                     }
                     break;
+
+                case INTERSECTION_CHECK:
+                    if (linesCount >= 2) {
+                        int intersectionCount = 0;
+                        for (size_t i = 0; i < linesCount; i++) {
+                            for (size_t j = i + 1; j < linesCount; j++) {
+                                Vector2 intersection;
+                                if (GetLineIntersection(lines[i], lines[j], &intersection)) {
+                                    ImageDrawCircle(&canvasImage, (int)intersection.x, (int)intersection.y, 5, RED);
+                                    intersectionCount++;
+                                }
+                            }
+                        }
+                        UpdateTexture(canvasTexture, canvasImage.data);
+                        snprintf(messageBoxText, sizeof(messageBoxText),
+                            "Intersections found: %d", intersectionCount);
+                        showMessageBox = true;
+                    }
+                    else {
+                        snprintf(messageBoxText, sizeof(messageBoxText),
+                            "Not enough lines. Created: %zu", linesCount);
+                        showMessageBox = true;
+                    }
+                    break;
+
+                case SIDE_CHECK:
+                    if (linesCount > 0) {
+                        strcpy(messageBoxText, "Point position:\n");
+                        for (size_t i = 0; i < linesCount; i++) {
+                            int side = ClassifyPointToLine(curMouseInner, lines[i]);
+                            char lineInfo[128];
+                            snprintf(lineInfo, sizeof(lineInfo), "Line %zu: %s\n", i + 1,
+                                side == 1 ? "LEFT" : (side == -1 ? "RIGHT" : "ON LINE"));
+                            strcat(messageBoxText, lineInfo);
+                        }
+                        showMessageBox = true;
+                    }
+                    else {
+                        snprintf(messageBoxText, sizeof(messageBoxText), "No lines created");
+                        showMessageBox = true;
+                    }
+                    break;
+
+                case POLYGON_MOVMENT:
+                case POLYGON_CENTER_CHANGING:
+                case POLYGON_POINT_CHANGING:
+                    if (polygons && polygonsCount > 0) {
+                        bool foundPolygon = false;
+                        for (size_t i = 0; i < polygonsCount; i++) {
+                            if (polygons[i].verts && IsPointInsidePolygon(curMouseInner, polygons[i])) {
+                                snprintf(messageBoxText, sizeof(messageBoxText),
+                                    "Point is INSIDE polygon #%zu", i + 1);
+                                foundPolygon = true;
+                                showMessageBox = true;
+                                break;
+                            }
+                        }
+                        if (!foundPolygon) {
+                            snprintf(messageBoxText, sizeof(messageBoxText),
+                                "Point is NOT inside any polygon");
+                            showMessageBox = true;
+                        }
+                    }
+                    else {
+                        snprintf(messageBoxText, sizeof(messageBoxText), "No polygons created");
+                        showMessageBox = true;
+                    }
+                    break;
+
                 default:
-                    printf("мы сейчас находимся в состоянии %s", buttonActions[state]);
                     break;
                 }
 
                 prevMouseInner = curMouseInner;
             }
-            
         }
 
-        GuiPanel(panel, NULL);  // Рисуем панель без названия (чисто границы)
-        DrawTexture(canvasTexture, canvas.x, canvas.y, WHITE);  // приказываем видекарте нарисовать нашу текстуру
+        GuiPanel(panel, NULL);
+        DrawTexture(canvasTexture, canvas.x, canvas.y, WHITE);
 
-        EndDrawing();  // Конец зоны рисования
+        if (showMessageBox) {
+            messageBoxResult = GuiMessageBox(
+                (Rectangle) {
+                WINDOW_WIDTH / 2 - 200, WINDOW_HIGHT / 2 - 100, 400, 200
+            },
+                "Result", messageBoxText, "OK");
+            if (messageBoxResult >= 0) {
+                showMessageBox = false;
+            }
+        }
+
+        EndDrawing();
     }
+
+    // Cleanup
+    UnloadTexture(canvasTexture);
+    UnloadImage(canvasImage);
+    if (lines) free(lines);
+    if (polygons) {
+        for (size_t i = 0; i < polygonsCount; i++) {
+            FreePolygon(polygons[i]);
+        }
+        free(polygons);
+    }
+
+    CloseWindow();
+    return 0;
 }
