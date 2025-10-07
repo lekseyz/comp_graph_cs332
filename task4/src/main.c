@@ -25,6 +25,7 @@
 
 typedef enum States {
     POLYGON_DRAWING,
+    POLYGON_INTERSECTION_CHECK,
     POLYGON_MOVMENT,
     POLYGON_CENTER_CHANGING,
     POLYGON_POINT_CHANGING,
@@ -205,6 +206,7 @@ int main() {
 
     States state = 7;
     char* buttonActions[] = { "Create Polygon",
+                             "Check Polygon Intersection",
                              "Move Polygon",
                              "Change Center",
                              "Change Point",
@@ -295,6 +297,30 @@ int main() {
                         UpdateTexture(canvasTexture, canvasImage.data);
                     }
                     break;
+                
+                case POLYGON_INTERSECTION_CHECK:
+                    if (polygons && polygonsCount > 0) {
+                        bool foundPolygon = false;
+                        for (size_t i = 0; i < polygonsCount; i++) {
+                            if (polygons[i].verts && IsPointInsidePolygon(curMouseInner, polygons[i])) {
+                                snprintf(messageBoxText, sizeof(messageBoxText),
+                                    "Point is INSIDE polygon #%zu", i + 1);
+                                foundPolygon = true;
+                                showMessageBox = true;
+                                break;
+                            }
+                        }
+                        if (!foundPolygon) {
+                            snprintf(messageBoxText, sizeof(messageBoxText),
+                                "Point is NOT inside any polygon");
+                            showMessageBox = true;
+                        }
+                    }
+                    else {
+                        snprintf(messageBoxText, sizeof(messageBoxText), "No polygons created");
+                        showMessageBox = true;
+                    }
+                    break;
 
                 case LINE_CREATION:
                     if (isFirstPoint) {
@@ -375,28 +401,6 @@ int main() {
                 case POLYGON_MOVMENT:
                 case POLYGON_CENTER_CHANGING:
                 case POLYGON_POINT_CHANGING:
-                    if (polygons && polygonsCount > 0) {
-                        bool foundPolygon = false;
-                        for (size_t i = 0; i < polygonsCount; i++) {
-                            if (polygons[i].verts && IsPointInsidePolygon(curMouseInner, polygons[i])) {
-                                snprintf(messageBoxText, sizeof(messageBoxText),
-                                    "Point is INSIDE polygon #%zu", i + 1);
-                                foundPolygon = true;
-                                showMessageBox = true;
-                                break;
-                            }
-                        }
-                        if (!foundPolygon) {
-                            snprintf(messageBoxText, sizeof(messageBoxText),
-                                "Point is NOT inside any polygon");
-                            showMessageBox = true;
-                        }
-                    }
-                    else {
-                        snprintf(messageBoxText, sizeof(messageBoxText), "No polygons created");
-                        showMessageBox = true;
-                    }
-                    break;
 
                 default:
                     break;
