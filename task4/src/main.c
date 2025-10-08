@@ -224,6 +224,58 @@ void DrawPolygon(Image *image, Color color, Polygon polygon) {
 }
 
 
+Vector2 RotatePoint(Vector2 point, Vector2 center, float angle) {
+  float s = sinf(angle);
+  float c = cosf(angle);
+  point.x -= center.x;
+  point.y -= center.y;
+  float xnew = point.x * c - point.y * s;
+  float ynew = point.x * s + point.y * c;
+  point.x = xnew + center.x;
+  point.y = ynew + center.y;
+  return point;
+}
+
+Vector2 ScalePoint(Vector2 point, Vector2 center, float scale) {
+  point.x = center.x + (point.x - center.x) * scale;
+  point.y = center.y + (point.y - center.y) * scale;
+  return point;
+}
+
+Vector2 GetAllPolygonsCenter(Polygon *polygons, size_t count) {
+  Vector2 sum = {0, 0};
+  int total = 0;
+  for (size_t i = 0; i < count; i++) {
+    PolygonVert *vert = polygons[i].verts;
+    if (!vert)
+      continue;
+    for (int j = 0; j < polygons[i].size; j++) {
+      sum.x += vert->cur.x;
+      sum.y += vert->cur.y;
+      total++;
+      vert = vert->next;
+    }
+  }
+  if (total == 0)
+    return (Vector2){0, 0};
+  sum.x /= total;
+  sum.y /= total;
+  return sum;
+}
+
+void TransformAllPolygons(Polygon *polygons, size_t count, Vector2 center,
+                          float angle, float scale) {
+  for (size_t i = 0; i < count; i++) {
+    PolygonVert *vert = polygons[i].verts;
+    if (!vert)
+      continue;
+    for (int j = 0; j < polygons[i].size; j++) {
+      vert->cur = RotatePoint(vert->cur, center, angle);
+      vert->cur = ScalePoint(vert->cur, center, scale);
+      vert = vert->next;
+    }
+  }
+}
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HIGHT, "Fill tools");
   SetTargetFPS(60);
@@ -298,7 +350,6 @@ int main() {
              linesCount);
     }
 
-    // Action buttons (FIXED: include SIDE_CHECK)
     for (int i = 0; i <= SIDE_CHECK; i++) {
       if (GuiButton(
               (Rectangle){ELEMENTS_X,
@@ -345,7 +396,6 @@ int main() {
       curMouseInner = (Vector2){mousePosition.x - borderWidth,
                                 mousePosition.y - borderWidth};
 
-      // --- Левая кнопка мыши ---
       if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         switch (state) {
         case POLYGON_DRAWING:
@@ -358,7 +408,6 @@ int main() {
 
         case LINE_CREATION:
           if (isFirstPoint) {
-            // Создаём стартовую точку линии
             Line *tmp = (Line *)realloc(lines, (linesCount + 1) * sizeof(Line));
             if (!tmp) {
               snprintf(messageBoxText, sizeof(messageBoxText), "Memory error");
@@ -375,14 +424,12 @@ int main() {
 
             isFirstPoint = false;
           } else {
-            // Создаём конечную точку линии и рисуем её
             lines[linesCount].end = curMouseInner;
 
             ImageDrawCircle(&canvasImage, curMouseInner.x, curMouseInner.y, 3,
                             GREEN);
             DrawBrezinheim(&canvasImage, BLACK, lines[linesCount]);
 
-            // Опционально: проверка пересечений с предыдущими линиями
             for (size_t i = 0; i < linesCount; i++) {
               Vector2 intersection;
               if (GetLineIntersection(lines[i], lines[linesCount],
@@ -533,7 +580,6 @@ int main() {
     EndDrawing();
   }
 
-  // Cleanup
   UnloadTexture(canvasTexture);
   UnloadImage(canvasImage);
   if (lines)
