@@ -34,6 +34,63 @@ typedef enum States {
   SIDE_CHECK
 } States;
 
+Vector2 RotatePoint(Vector2 point, Vector2 center, float angle) {
+  float s = sinf(angle);
+  float c = cosf(angle);
+  point.x -= center.x;
+  point.y -= center.y;
+  float xnew = point.x * c - point.y * s;
+  float ynew = point.x * s + point.y * c;
+  point.x = xnew + center.x;
+  point.y = ynew + center.y;
+  return point;
+}
+
+
+Vector2 ScalePoint(Vector2 point, Vector2 center, float scale) {
+  point.x = center.x + (point.x - center.x) * scale;
+  point.y = center.y + (point.y - center.y) * scale;
+  return point;
+}
+
+
+Vector2 GetAllPolygonsCenter(Polygon *polygons, size_t count) {
+  Vector2 sum = {0, 0};
+  int total = 0;
+  for (size_t i = 0; i < count; i++) {
+    PolygonVert *vert = polygons[i].verts;
+    if (!vert)
+      continue;
+    for (int j = 0; j < polygons[i].size; j++) {
+      sum.x += vert->cur.x;
+      sum.y += vert->cur.y;
+      total++;
+      vert = vert->next;
+    }
+  }
+  if (total == 0)
+    return (Vector2){0, 0};
+  sum.x /= total;
+  sum.y /= total;
+  return sum;
+}
+
+
+void TransformAllPolygons(Polygon *polygons, size_t count, Vector2 center,
+                          float angle, float scale) {
+  for (size_t i = 0; i < count; i++) {
+    PolygonVert *vert = polygons[i].verts;
+    if (!vert)
+      continue;
+    for (int j = 0; j < polygons[i].size; j++) {
+      vert->cur = RotatePoint(vert->cur, center, angle);
+      vert->cur = ScalePoint(vert->cur, center, scale);
+      vert = vert->next;
+    }
+  }
+}
+
+
 void BrezinheimLow(Image *image, Color color, Line line) {
   int dx = line.end.x - line.start.x;
   int dy = line.end.y - line.start.y;
@@ -165,62 +222,8 @@ void DrawPolygon(Image *image, Color color, Polygon polygon) {
 
   free(intersections);
 }
-// Функция поворота точки вокруг другой точки
-Vector2 RotatePoint(Vector2 point, Vector2 center, float angle) {
-  float s = sinf(angle);
-  float c = cosf(angle);
-  point.x -= center.x;
-  point.y -= center.y;
-  float xnew = point.x * c - point.y * s;
-  float ynew = point.x * s + point.y * c;
-  point.x = xnew + center.x;
-  point.y = ynew + center.y;
-  return point;
-}
 
-// Функция масштабирования точки относительно центра
-Vector2 ScalePoint(Vector2 point, Vector2 center, float scale) {
-  point.x = center.x + (point.x - center.x) * scale;
-  point.y = center.y + (point.y - center.y) * scale;
-  return point;
-}
 
-// Центр всех полигонов (среднеарифметическое всех вершин)
-Vector2 GetAllPolygonsCenter(Polygon *polygons, size_t count) {
-  Vector2 sum = {0, 0};
-  int total = 0;
-  for (size_t i = 0; i < count; i++) {
-    PolygonVert *vert = polygons[i].verts;
-    if (!vert)
-      continue;
-    for (int j = 0; j < polygons[i].size; j++) {
-      sum.x += vert->cur.x;
-      sum.y += vert->cur.y;
-      total++;
-      vert = vert->next;
-    }
-  }
-  if (total == 0)
-    return (Vector2){0, 0};
-  sum.x /= total;
-  sum.y /= total;
-  return sum;
-}
-
-// Применить поворот и масштаб ко всем полигонам
-void TransformAllPolygons(Polygon *polygons, size_t count, Vector2 center,
-                          float angle, float scale) {
-  for (size_t i = 0; i < count; i++) {
-    PolygonVert *vert = polygons[i].verts;
-    if (!vert)
-      continue;
-    for (int j = 0; j < polygons[i].size; j++) {
-      vert->cur = RotatePoint(vert->cur, center, angle);
-      vert->cur = ScalePoint(vert->cur, center, scale);
-      vert = vert->next;
-    }
-  }
-}
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HIGHT, "Fill tools");
   SetTargetFPS(60);
@@ -280,7 +283,8 @@ int main() {
       printf("Ceanitg polygons. Poligons to be deallocated: %d\n",
              polygonsCount);
       if (polygons) {
-        polygonsCount = 0;
+        for (size_t i = 0; i < polygonsCount; i++)
+          FreePolygon(polygons[i]);
         free(polygons);
         polygons = NULL;
       }
@@ -465,7 +469,7 @@ int main() {
         prevMouseInner = curMouseInner;
       }
 
-      // --- Правая кнопка мыши ---
+      
       if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         switch (state) {
         case POLYGON_MOVMENT:
@@ -535,9 +539,8 @@ int main() {
   if (lines)
     free(lines);
   if (polygons) {
-    for (size_t i = 0; i < polygonsCount; i++) {
+    for (size_t i = 0; i < polygonsCount; i++)
       FreePolygon(polygons[i]);
-    }
     free(polygons);
   }
 
