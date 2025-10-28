@@ -35,6 +35,7 @@ struct Face {
 };
 
 enum class ReflectPlane { XY = 0, YZ = 1, XZ = 2 };
+enum ProjectionType { PROJ_PERSPECTIVE = 0, PROJ_ORTHOGRAPHIC = 1 };
 
 struct Polyhedron {
     std::vector<Point3D> vertices;
@@ -206,7 +207,7 @@ static float UniformScaleFromMatrix(const Matrix& m) {
 
 int main() {
     SetConfigFlags(FLAG_MSAA_4X_HINT);
-    InitWindow(900, 600, "Polyhedron Transform Tool - Rotation Around Arbitrary Line");
+    InitWindow(900, 600, "Polyhedron Transform Tool - Projections");
     SetTargetFPS(60);
 
     const Rectangle viewport = { 0, 0, 600, 600 };
@@ -218,6 +219,17 @@ int main() {
     cam.up = { 0.0f, 1.0f, 0.0f };
     cam.fovy = 45.0f;
     cam.projection = CAMERA_PERSPECTIVE;
+
+    // Ортографическая камера с увеличенным размером для уменьшения объектов
+    Camera3D orthoCam = { 0 };
+    orthoCam.position = { 3.0f, 3.0f, 3.0f };
+    orthoCam.target = { 0.0f, 0.0f, 0.0f };
+    orthoCam.up = { 0.0f, 1.0f, 0.0f };
+    orthoCam.fovy = 4.0f; // Увеличенный размер для меньших объектов
+    orthoCam.projection = CAMERA_ORTHOGRAPHIC;
+
+    int projectionType = PROJ_PERSPECTIVE;
+    float orthoSizeMultiplier = 5.0f; // Множитель для настройки размера
 
     Polyhedron poly;
     std::vector<std::string> files = listObjFiles("figures");
@@ -275,6 +287,12 @@ int main() {
     Rectangle scrollView = { 0 };
 
     while (!WindowShouldClose()) {
+        // Обновление ортографической камеры с увеличенным множителем
+        if (projectionType == PROJ_ORTHOGRAPHIC) {
+            float scale = UniformScaleFromMatrix(poly.model);
+            orthoCam.fovy = scale * orthoSizeMultiplier; // Используем настраиваемый множитель
+        }
+
         BeginDrawing();
         ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
@@ -318,6 +336,23 @@ int main() {
             if (!files.empty()) { fileIndex = fileIndex % (int)files.size(); loadCurrentFile(); }
         }
         y += LINE_H + GAP + 4;
+
+        // Добавляем переключатель проекций
+        DrawText("Projection:", UI_X, y, 16, DARKGRAY); y += 20;
+        Rectangle rPersp = { (float)UI_X, (float)y, (float)UI_W/2-5, (float)LINE_H };
+        Rectangle rOrtho = { (float)(UI_X + UI_W/2 + 5), (float)y, (float)UI_W/2-5, (float)LINE_H };
+        if (GuiButton(rPersp, projectionType == PROJ_PERSPECTIVE ? "[Perspective]" : "Perspective")) 
+            projectionType = PROJ_PERSPECTIVE;
+        if (GuiButton(rOrtho, projectionType == PROJ_ORTHOGRAPHIC ? "[Orthographic]" : "Orthographic")) 
+            projectionType = PROJ_ORTHOGRAPHIC;
+        y += LINE_H + GAP + 4;
+
+        // Настройки размера для ортографической проекции
+        if (projectionType == PROJ_ORTHOGRAPHIC) {
+            DrawText("Ortho Size:", UI_X, y, 14, DARKGRAY); y += 16;
+            GuiSliderBar({ (float)UI_X, (float)y, (float)UI_W, (float)LINE_H }, "Small", "Large", &orthoSizeMultiplier, 2.0f, 10.0f);
+            y += LINE_H + GAP;
+        }
 
         DrawText("Tool:", UI_X, y, 16, DARKGRAY); y += 20;
 
@@ -459,7 +494,11 @@ int main() {
 
         BeginTextureMode(target);
         ClearBackground(RAYWHITE);
-        BeginMode3D(cam);
+        
+        // Выбираем камеру в зависимости от типа проекции
+        Camera3D currentCamera = (projectionType == PROJ_ORTHOGRAPHIC) ? orthoCam : cam;
+        
+        BeginMode3D(currentCamera);
         DrawLine3D({ 0,0,0 }, { 1,0,0 }, RED);
         DrawLine3D({ 0,0,0 }, { 0,1,0 }, GREEN);
         DrawLine3D({ 0,0,0 }, { 0,0,1 }, BLUE);
