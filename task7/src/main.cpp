@@ -230,6 +230,81 @@ struct Polyhedron {
         recenterAndAutoscale();
     }
 
+    // Новая функция для создания фигуры вращения
+    void generateSurfaceOfRevolution(const std::vector<Vector2>& profile, int axis, int divisions) {
+        clear();
+        
+        if (profile.size() < 2 || divisions < 3) return;
+        
+        // Создаем вершины
+        float angleStep = 2.0f * PI / divisions;
+        
+        for (int i = 0; i <= divisions; i++) {
+            float angle = i * angleStep;
+            float cosA = cosf(angle);
+            float sinA = sinf(angle);
+            
+            for (const auto& point : profile) {
+                float x, y, z;
+                
+                switch (axis) {
+                    case 0: // Вращение вокруг оси X
+                        x = point.y;  // высота
+                        y = point.x * cosA;  // радиус * cos
+                        z = point.x * sinA;  // радиус * sin
+                        break;
+                    case 1: // Вращение вокруг оси Y
+                        x = point.x * cosA;
+                        y = point.y;
+                        z = point.x * sinA;
+                        break;
+                    case 2: // Вращение вокруг оси Z
+                        x = point.x * cosA;
+                        y = point.x * sinA;
+                        z = point.y;
+                        break;
+                    default:
+                        x = point.x * cosA;
+                        y = point.y;
+                        z = point.x * sinA;
+                        break;
+                }
+                
+                vertices.emplace_back(x, y, z);
+            }
+        }
+        
+        // Создаем грани
+        int profileSize = profile.size();
+        int totalDivisions = divisions + 1; // +1 для замыкания
+        
+        for (int i = 0; i < divisions; i++) {
+            for (int j = 0; j < profileSize - 1; j++) {
+                int current = i * profileSize + j;
+                int next = i * profileSize + j + 1;
+                int nextRing = ((i + 1) % totalDivisions) * profileSize + j;
+                int nextRingNext = ((i + 1) % totalDivisions) * profileSize + j + 1;
+                
+                // Первый треугольник
+                Face f1;
+                f1.idx.push_back(current);
+                f1.idx.push_back(next);
+                f1.idx.push_back(nextRingNext);
+                faces.push_back(f1);
+                
+                // Второй треугольник
+                Face f2;
+                f2.idx.push_back(current);
+                f2.idx.push_back(nextRingNext);
+                f2.idx.push_back(nextRing);
+                faces.push_back(f2);
+            }
+        }
+        
+        computeEdges();
+        recenterAndAutoscale();
+    }
+
     void computeEdges() {
         edges.clear();
         std::set<std::pair<int, int>> uniq;
@@ -421,7 +496,8 @@ int main() {
     char p2z_text[32] = "0.0";
     char angle_text[32] = "45.0";
 
-    enum TextFieldID { P1X = 0, P1Y, P1Z, P2X, P2Y, P2Z, ANGLE, X0, X1, Y0, Y1, XDIV, YDIV, NONE };
+    enum TextFieldID { P1X = 0, P1Y, P1Z, P2X, P2Y, P2Z, ANGLE, X0, X1, Y0, Y1, XDIV, YDIV, 
+                      REV_PROFILE, REV_DIVISIONS, REV_AXIS, NONE };
     int activeField = NONE;
 
     bool dragging = false, reflectAppliedThisDrag = false;
@@ -434,7 +510,6 @@ int main() {
     const int LINE_H = 24, GAP = 4;
 
     Vector2 scrollOffset = { 0, 0 };
-    Rectangle scrollView = { 0 };
 
     int currentFunction = 0;
     const char* functionNames[] = {
@@ -489,8 +564,14 @@ int main() {
     char xdiv_text[32] = "50";
     char ydiv_text[32] = "50";
 
+    // Новые переменные для фигур вращения
     bool showSurfacePanel = false;
+    bool showRevolutionPanel = false;
     std::string lastSavedFile = "";
+
+    char revolutionProfileText[512] = "0.0 0.0\n1.0 0.0\n1.0 1.0\n0.0 1.0";
+    char revolutionDivisionsText[32] = "36";
+    int revolutionAxis = 1; // 0-X, 1-Y, 2-Z
 
     while (!WindowShouldClose()) {
         if (projectionType == PROJ_ORTHOGRAPHIC) {
@@ -506,7 +587,7 @@ int main() {
         DrawLine(PANEL_X, 0, PANEL_X, 700, LIGHTGRAY);
 
         Rectangle panelView = { (float)PANEL_X, 0, (float)PANEL_W, 700 };
-        Rectangle panelContent = { (float)PANEL_X, 0, (float)(PANEL_W - 12), 2000 };
+        Rectangle panelContent = { (float)PANEL_X, 0, (float)(PANEL_W - 12), 2500 };
 
         Rectangle scissor = { 0 };
         GuiScrollPanel(panelView, NULL, panelContent, &scrollOffset, &scissor);
@@ -520,20 +601,28 @@ int main() {
         DrawText("3D Tool - Lab 7", UI_X, y, 18, BLACK);
         y += 30;
 
-        Rectangle rFigureMode = { (float)UI_X, (float)y, (float)(UI_W / 2 - 2), (float)LINE_H };
-        Rectangle rSurfaceMode = { (float)(UI_X + UI_W / 2 + 2), (float)y, (float)(UI_W / 2 - 2), (float)LINE_H };
+        Rectangle rFigureMode = { (float)UI_X, (float)y, (float)(UI_W / 3 - 2), (float)LINE_H };
+        Rectangle rSurfaceMode = { (float)(UI_X + UI_W / 3 + 2), (float)y, (float)(UI_W / 3 - 2), (float)LINE_H };
+        Rectangle rRevolutionMode = { (float)(UI_X + 2 * UI_W / 3 + 4), (float)y, (float)(UI_W / 3 - 2), (float)LINE_H };
 
-        if (GuiButton(rFigureMode, !showSurfacePanel ? "[Load Figures]" : "Load Figures")) {
+        if (GuiButton(rFigureMode, (!showSurfacePanel && !showRevolutionPanel) ? "[Load Figures]" : "Load Figures")) {
             showSurfacePanel = false;
+            showRevolutionPanel = false;
             activeField = NONE;
         }
         if (GuiButton(rSurfaceMode, showSurfacePanel ? "[Surface Gen]" : "Surface Gen")) {
             showSurfacePanel = true;
+            showRevolutionPanel = false;
+            activeField = NONE;
+        }
+        if (GuiButton(rRevolutionMode, showRevolutionPanel ? "[Revolution]" : "Revolution")) {
+            showSurfacePanel = false;
+            showRevolutionPanel = true;
             activeField = NONE;
         }
         y += LINE_H + GAP + 10;
 
-        if (!showSurfacePanel) {
+        if (!showSurfacePanel && !showRevolutionPanel) {
             DrawText("Figure:", UI_X, y, 16, DARKGRAY); y += 20;
 
             Rectangle rPrev = { (float)UI_X, (float)y, 80, (float)LINE_H };
@@ -662,6 +751,103 @@ int main() {
 
             if (!lastSavedFile.empty()) {
 
+                size_t pos = lastSavedFile.find_last_of("/\\");
+                std::string displayName = (pos != std::string::npos) ? lastSavedFile.substr(pos + 1) : lastSavedFile;
+                DrawText("Last saved:", UI_X, y, 11, DARKGRAY);
+                y += 14;
+                DrawText(displayName.c_str(), UI_X, y, 10, GREEN);
+                y += 16;
+            }
+            y += 4;
+        }
+
+        // Новая панель для фигур вращения
+        if (showRevolutionPanel) {
+            DrawText("Revolution Surface:", UI_X, y, 16, DARKGRAY);
+            y += 20;
+
+            DrawText("Profile points (x y per line):", UI_X, y, 14, DARKGRAY);
+            y += 16;
+            Rectangle rProfile = { (float)UI_X, (float)y, (float)UI_W, (float)LINE_H };
+            if (GuiTextBox(rProfile, revolutionProfileText, sizeof(revolutionProfileText), activeField == REV_PROFILE)) {
+                activeField = (activeField == REV_PROFILE) ? NONE : REV_PROFILE;
+            }
+            y += LINE_H + GAP;
+
+            DrawText("Axis of revolution:", UI_X, y, 14, DARKGRAY);
+            y += 16;
+            Rectangle rAxisX = { (float)UI_X, (float)y, (float)(UI_W / 3 - 2), (float)LINE_H };
+            Rectangle rAxisY = { (float)(UI_X + UI_W / 3 + 2), (float)y, (float)(UI_W / 3 - 2), (float)LINE_H };
+            Rectangle rAxisZ = { (float)(UI_X + 2 * UI_W / 3 + 4), (float)y, (float)(UI_W / 3 - 2), (float)LINE_H };
+            if (GuiButton(rAxisX, revolutionAxis == 0 ? "[X]" : "X")) revolutionAxis = 0;
+            if (GuiButton(rAxisY, revolutionAxis == 1 ? "[Y]" : "Y")) revolutionAxis = 1;
+            if (GuiButton(rAxisZ, revolutionAxis == 2 ? "[Z]" : "Z")) revolutionAxis = 2;
+            y += LINE_H + GAP;
+
+            DrawText("Divisions:", UI_X, y, 14, DARKGRAY);
+            y += 16;
+            Rectangle rRevDiv = { (float)UI_X, (float)y, (float)UI_W, (float)LINE_H };
+            if (GuiTextBox(rRevDiv, revolutionDivisionsText, 32, activeField == REV_DIVISIONS)) activeField = REV_DIVISIONS;
+            y += LINE_H + GAP + 10;
+
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                Vector2 mouse = GetMousePosition();
+                bool clickedOnField = CheckCollisionPointRec(mouse, rProfile) ||
+                    CheckCollisionPointRec(mouse, rRevDiv);
+                if (!clickedOnField && !CheckCollisionPointRec(mouse, panelView)) activeField = NONE;
+            }
+
+            Rectangle rGenerateRev = { (float)UI_X, (float)y, (float)UI_W, (float)(LINE_H + 4) };
+            if (GuiButton(rGenerateRev, "GENERATE REVOLUTION")) {
+                activeField = NONE;
+                try {
+                    // Парсим точки образующей
+                    std::vector<Vector2> profile;
+                    std::istringstream iss(revolutionProfileText);
+                    std::string line;
+                    while (std::getline(iss, line)) {
+                        std::istringstream ls(line);
+                        float x, y;
+                        if (ls >> x >> y) {
+                            profile.push_back({x, y});
+                        }
+                    }
+                    
+                    int divisions = std::stoi(revolutionDivisionsText);
+                    
+                    if (profile.size() >= 2 && divisions >= 3) {
+                        poly.generateSurfaceOfRevolution(profile, revolutionAxis, divisions);
+                        TraceLog(LOG_INFO, "Revolution surface generated: %d vertices, %d faces",
+                            (int)poly.vertices.size(), (int)poly.faces.size());
+                    } else {
+                        TraceLog(LOG_WARNING, "Need at least 2 profile points and 3 divisions");
+                    }
+                }
+                catch (...) {
+                    TraceLog(LOG_WARNING, "Invalid input parameters for revolution");
+                }
+            }
+            y += LINE_H + GAP + 10;
+
+            Rectangle rSave = { (float)UI_X, (float)y, (float)UI_W, (float)LINE_H };
+            if (GuiButton(rSave, "Save to figures/")) {
+                activeField = NONE;
+                if (!poly.vertices.empty()) {
+                    std::string filename = Polyhedron::getNextSurfaceFilename();
+                    if (poly.saveOBJ(filename)) {
+                        lastSavedFile = filename;
+                        TraceLog(LOG_INFO, "Saved to %s", filename.c_str());
+
+                        files = listObjFiles("figures");
+                    }
+                    else {
+                        TraceLog(LOG_WARNING, "Failed to save to %s", filename.c_str());
+                    }
+                }
+            }
+            y += LINE_H + GAP;
+
+            if (!lastSavedFile.empty()) {
                 size_t pos = lastSavedFile.find_last_of("/\\");
                 std::string displayName = (pos != std::string::npos) ? lastSavedFile.substr(pos + 1) : lastSavedFile;
                 DrawText("Last saved:", UI_X, y, 11, DARKGRAY);
