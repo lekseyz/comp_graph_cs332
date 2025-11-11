@@ -1,4 +1,3 @@
-// main.cpp
 #define RAYGUI_IMPLEMENTATION
 #include "raylib.h"
 #include "raygui.h"
@@ -11,9 +10,9 @@
 #include <cctype>
 #include <cmath>
 
-// ------------------------
-// Структуры и вспомогательные функции
-// ------------------------
+// ================================
+// ===  Структуры и функции     ===
+// ================================
 
 struct Obj3D {
     Model model;
@@ -24,7 +23,6 @@ struct Obj3D {
     bool valid{false};
 };
 
-// Камера-объект с матрицами
 struct CameraObj {
     Vector3 position{0,0,0};
     Vector3 target{0,0,0};
@@ -39,24 +37,22 @@ struct CameraObj {
         position = c.position;
         target = c.target;
         direction = Vector3Normalize(Vector3Subtract(target, position));
-        view = GetCameraMatrix(c); // матрица вида
+        view = GetCameraMatrix(c);
         float aspect = (float)screenW / (float)screenH;
-        proj = MatrixPerspective(DEG2RAD * fovy, aspect, nearZ, farZ); // матрица проекции
+        proj = MatrixPerspective(DEG2RAD * fovy, aspect, nearZ, farZ);
     }
 };
 
 static Vector3 GetVertex(const Mesh& m, int idx) {
-    int i = idx*3;
-    return { m.vertices[i+0], m.vertices[i+1], m.vertices[i+2] };
+    int i = idx * 3;
+    return {m.vertices[i], m.vertices[i+1], m.vertices[i+2]};
 }
 
 static Vector3 TransformVec(Vector3 v, Matrix M) {
     return Vector3Transform(v, M);
 }
 
-static void DrawCulledMesh(const Mesh& mesh, Matrix objM, const Camera3D& cam, Color col, bool showBackface) {
-    // рисуем треугольники с простым backface culling
-    // (используем rlVertex напрямую для обучения — в production лучше шейдер/вбуферы)
+static void DrawCulledMesh(const Mesh& mesh, Matrix objM, const Camera3D& cam, Color col, bool showBack) {
     rlDisableBackfaceCulling();
     rlBegin(RL_TRIANGLES);
     int tcount = mesh.triangleCount;
@@ -79,17 +75,13 @@ static void DrawCulledMesh(const Mesh& mesh, Matrix objM, const Camera3D& cam, C
         Vector3 e2 = Vector3Subtract(v3, v1);
         Vector3 n = Vector3Normalize(Vector3CrossProduct(e1, e2));
 
-        Vector3 center = {(v1.x+v2.x+v3.x)/3.0f, (v1.y+v2.y+v3.y)/3.0f, (v1.z+v2.z+v3.z)/3.0f};
-        Vector3 lookVec = Vector3Subtract(center, cam.position);
-
-        // если нормаль направлена от камеры — рисуем
+        Vector3 lookVec = Vector3Subtract(v1, cam.position);
         if (Vector3DotProduct(n, lookVec) < 0.0f) {
             rlColor4ub(col.r, col.g, col.b, col.a);
             rlVertex3f(v1.x, v1.y, v1.z);
             rlVertex3f(v2.x, v2.y, v2.z);
             rlVertex3f(v3.x, v3.y, v3.z);
-        } else if (showBackface) {
-            // дополнительная визуализация обратных граней (полупрозрачные)
+        } else if (showBack) {
             rlColor4ub(60, 60, 60, 80);
             rlVertex3f(v1.x, v1.y, v1.z);
             rlVertex3f(v2.x, v2.y, v2.z);
@@ -99,34 +91,24 @@ static void DrawCulledMesh(const Mesh& mesh, Matrix objM, const Camera3D& cam, C
     rlEnd();
 }
 
-static void DrawObjCulled(const Obj3D& obj, const Camera3D& cam, bool showBackface) {
+static void DrawObjCulled(const Obj3D& obj, const Camera3D& cam, bool showBack) {
     Matrix S = MatrixScale(obj.scale, obj.scale, obj.scale);
     Matrix R = MatrixRotateXYZ({obj.rot.x, obj.rot.y, obj.rot.z});
     Matrix T = MatrixTranslate(obj.pos.x, obj.pos.y, obj.pos.z);
-    Matrix M = MatrixMultiply(MatrixMultiply(S, R), T); // мировая матрица объекта
-    for (int i = 0; i < obj.model.meshCount; i++) {
-        DrawCulledMesh(obj.model.meshes[i], M, cam, obj.color, showBackface);
-    }
+    Matrix M = MatrixMultiply(MatrixMultiply(S, R), T);
+    for (int i = 0; i < obj.model.meshCount; i++)
+        DrawCulledMesh(obj.model.meshes[i], M, cam, obj.color, showBack);
 }
 
-// ------------------------
-// Основная программа
-// ------------------------
-
-static std::string toLowerExt(const std::string& s) {
-    std::string ext;
-    auto pos = s.find_last_of('.');
-    if (pos == std::string::npos) return "";
-    ext = s.substr(pos);
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return std::tolower(c); });
-    return ext;
-}
+// ================================
+// ===           MAIN           ===
+// ================================
 
 int main() {
-    InitWindow(1280, 800, "Camera Object + ADD OBJ fixed (preserve old UI)");
+    InitWindow(1280, 800, "Camera Mode: Static / Orbit");
     SetTargetFPS(60);
 
-    // raylib-камера (используется BeginMode3D)
+    // Raylib камера
     Camera3D cam = {0};
     cam.position = {6.0f, 3.0f, 6.0f};
     cam.target = {0.0f, 0.0f, 0.0f};
@@ -134,28 +116,23 @@ int main() {
     cam.fovy = 60.0f;
     cam.projection = CAMERA_PERSPECTIVE;
 
-    // наш CameraObj для хранения view/proj
+    // Объект-камера
     CameraObj objCam;
     objCam.fovy = cam.fovy;
-    objCam.nearZ = 0.1f;
-    objCam.farZ = 100.0f;
 
-    // собираем список .obj (регистр расширения игнорируем)
+    // Загружаем файлы .obj
     std::vector<std::string> objFiles;
-    std::string figuresDir = "figures";
-    if (std::filesystem::exists(figuresDir) && std::filesystem::is_directory(figuresDir)) {
-        for (auto &p : std::filesystem::directory_iterator(figuresDir)) {
-            if (!p.is_regular_file()) continue;
-            std::string ext = toLowerExt(p.path().string());
-            if (ext == ".obj") objFiles.push_back(p.path().string());
-        }
+    for (auto &p : std::filesystem::directory_iterator("figures")) {
+        if (p.path().extension() == ".obj") objFiles.push_back(p.path().string());
     }
 
     std::vector<Obj3D> scene;
     int selected = -1;
-    int nextFile = 0;
     bool moveMode = false;
-    bool testBackface = false;
+    bool showBack = false;
+    bool orbitMode = false;
+    bool camControlEnabled = true;  // <-- добавлено
+    float camMoveSpeed = 5.0f;      // <-- добавлено
 
     float camOrbitRadius = 6.0f;
     float camAngle = 0.0f;
@@ -165,169 +142,149 @@ int main() {
 
     int panelW = 280;
 
-    // Список цветов для объектов
-    Color cols[6] = { RED, ORANGE, YELLOW, GREEN, SKYBLUE, VIOLET };
-
-    // addObj: возвращает true если успешно
-    auto addObj = [&](const std::string& path)->bool {
-        // проверим файл
-        if (!std::filesystem::exists(path)) return false;
-        Model m = LoadModel(path.c_str());
-
-        // простая проверка успешности — если meshCount == 0, модель скорее всего не загрузилась
-        if (m.meshCount <= 0) {
-            // если каким-то образом что-то внутри есть, очищаем
-            UnloadModel(m);
-            return false;
-        }
-
+    auto addObj = [&](const std::string& path){
         Obj3D o;
-        o.model = m;
+        o.model = LoadModel(path.c_str());
         o.valid = true;
         o.scale = 1.0f;
-
-        // позиционируем объект по X так, чтобы новые объекты не накладывались
-        float spacing = 2.0f;
-        o.pos = { (float)scene.size() * spacing, 0.0f, 0.0f };
-
-        // цвет — по индексу (используем число объектов до добавления)
-        o.color = cols[scene.size() % 6];
-
+        o.color = SKYBLUE;
+        o.pos = {(float)scene.size()*2.0f, 0.0f, 0.0f};
         scene.push_back(o);
-        selected = (int)scene.size() - 1;
-        return true;
+        selected = (int)scene.size()-1;
     };
 
-    // Restore nextFile to valid range if objFiles size changed
-    auto clampNextFile = [&](){
-        if (objFiles.empty()) nextFile = 0;
-        else nextFile = nextFile % (int)objFiles.size();
-    };
-    clampNextFile();
-
-    // Основной цикл
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
         int sw = GetScreenWidth(), sh = GetScreenHeight();
         Rectangle panel = {(float)(sw - panelW), 0, (float)panelW, (float)sh};
 
-        // клавиши управления
-        if (IsKeyPressed(KEY_P)) {
-            cam.projection = (cam.projection == CAMERA_PERSPECTIVE) ? CAMERA_ORTHOGRAPHIC : CAMERA_PERSPECTIVE;
-            objCam.fovy = cam.fovy;
-        }
+        // ОБНОВЛЕНИЕ КАМЕРЫ И УПРАВЛЕНИЕ
+        if (orbitMode) {
+            // Вращающаяся камера вокруг статичного объекта
+            camAngle += camSpeed * dt;
+            Vector3 center = {0,0,0};
+            if (selected >= 0 && selected < (int)scene.size()) center = scene[selected].pos;
 
-        // WASD для перемещения выбранного объекта (если включен режим MOVE)
-        if (moveMode && selected >= 0 && selected < (int)scene.size()) {
-            float sp = 3.0f * dt;
-            if (IsKeyDown(KEY_W)) scene[selected].pos.z -= sp;
-            if (IsKeyDown(KEY_S)) scene[selected].pos.z += sp;
-            if (IsKeyDown(KEY_A)) scene[selected].pos.x -= sp;
-            if (IsKeyDown(KEY_D)) scene[selected].pos.x += sp;
-            if (IsKeyDown(KEY_Q)) scene[selected].pos.y -= sp;
-            if (IsKeyDown(KEY_E)) scene[selected].pos.y += sp;
-            if (IsKeyPressed(KEY_LEFT)) {
-                if (!scene.empty()) selected = (selected - 1 + (int)scene.size()) % (int)scene.size();
+            cam.position = {
+                center.x + camOrbitRadius * sinf(camAngle),
+                center.y + 2.0f,
+                center.z + camOrbitRadius * cosf(camAngle)
+            };
+            cam.target = center;
+            cam.up = {0,1,0};
+
+            // Вручную задаем матрицу проекции (только для вращающейся)
+            objCam.UpdateFromCamera3D(cam, rtex.texture.width, rtex.texture.height);
+        } else {
+            // Статичная камера, вращается объект
+            for (auto &o : scene)
+                o.rot.y += 1.0f * dt;
+            
+            // WASD УПРАВЛЕНИЕ ДЛЯ СТАТИЧЕСКОЙ КАМЕРЫ
+            if (camControlEnabled) {
+                // Вычисляем направление камеры правильно
+                Vector3 camDirection = Vector3Normalize(Vector3Subtract(cam.target, cam.position));
+                Vector3 camRight = Vector3Normalize(Vector3CrossProduct(camDirection, cam.up));
+                Vector3 camUp = cam.up;
+                
+                if (IsKeyDown(KEY_W)) {
+                    cam.position = Vector3Add(cam.position, Vector3Scale(camDirection, camMoveSpeed * dt));
+                    cam.target = Vector3Add(cam.target, Vector3Scale(camDirection, camMoveSpeed * dt));
+                }
+                if (IsKeyDown(KEY_S)) {
+                    cam.position = Vector3Subtract(cam.position, Vector3Scale(camDirection, camMoveSpeed * dt));
+                    cam.target = Vector3Subtract(cam.target, Vector3Scale(camDirection, camMoveSpeed * dt));
+                }
+                if (IsKeyDown(KEY_A)) {
+                    cam.position = Vector3Subtract(cam.position, Vector3Scale(camRight, camMoveSpeed * dt));
+                    cam.target = Vector3Subtract(cam.target, Vector3Scale(camRight, camMoveSpeed * dt));
+                }
+                if (IsKeyDown(KEY_D)) {
+                    cam.position = Vector3Add(cam.position, Vector3Scale(camRight, camMoveSpeed * dt));
+                    cam.target = Vector3Add(cam.target, Vector3Scale(camRight, camMoveSpeed * dt));
+                }
+                if (IsKeyDown(KEY_Q)) { // Вверх
+                    cam.position = Vector3Add(cam.position, Vector3Scale(camUp, camMoveSpeed * dt));
+                    cam.target = Vector3Add(cam.target, Vector3Scale(camUp, camMoveSpeed * dt));
+                }
+                if (IsKeyDown(KEY_E)) { // Вниз
+                    cam.position = Vector3Subtract(cam.position, Vector3Scale(camUp, camMoveSpeed * dt));
+                    cam.target = Vector3Subtract(cam.target, Vector3Scale(camUp, camMoveSpeed * dt));
+                }
             }
-            if (IsKeyPressed(KEY_RIGHT)) {
-                if (!scene.empty()) selected = (selected + 1) % (int)scene.size();
-            }
         }
-
-        // вращение камеры вокруг выбранного объекта (или вокруг 0,0,0 если ничего не выбрано)
-        camAngle += camSpeed * dt;
-        Vector3 center = {0.0f, 0.0f, 0.0f};
-        if (selected >= 0 && selected < (int)scene.size()) center = scene[selected].pos;
-
-        cam.position = {
-            center.x + camOrbitRadius * sinf(camAngle),
-            center.y + 2.0f,
-            center.z + camOrbitRadius * cosf(camAngle)
-        };
-        cam.target = center;
-        cam.up = {0.0f, 1.0f, 0.0f};
-
-        // Обновляем объект-камеру (view и proj)
-        objCam.fovy = cam.fovy;
-        objCam.UpdateFromCamera3D(cam, rtex.texture.width, rtex.texture.height);
 
         // --- Рендер сцены в текстуру ---
         BeginTextureMode(rtex);
             ClearBackground({18,18,24,255});
-            BeginMode3D(cam); // здесь raylib применяет матрицы view/proj внутренне
+            BeginMode3D(cam);
                 DrawGrid(20, 1.0f);
-                for (int i = 0; i < (int)scene.size(); i++) {
-                    DrawObjCulled(scene[i], cam, testBackface);
-                }
+                for (int i = 0; i < (int)scene.size(); i++)
+                    DrawObjCulled(scene[i], cam, showBack);
                 if (selected >= 0 && selected < (int)scene.size())
                     DrawSphereWires(scene[selected].pos, 0.15f, 10, 10, GOLD);
             EndMode3D();
         EndTextureMode();
 
-        // --- Отрисовка UI и текстур на экране ---
+        // --- Отрисовка интерфейса ---
         BeginDrawing();
-            ClearBackground({18,18,24,255});
+        ClearBackground({18,18,24,255});
 
-            // показать рендер-таргет (изображение с камеры)
-            DrawTexturePro(rtex.texture,
-                Rectangle{0.0f, 0.0f, (float)rtex.texture.width, (float)-rtex.texture.height},
-                Rectangle{16.0f, 16.0f, 640.0f, 480.0f},
-                Vector2{0,0}, 0.0f, WHITE);
+        DrawTexturePro(rtex.texture,
+            {0,0,(float)rtex.texture.width,(float)-rtex.texture.height},
+            {16,16,640,480},{0,0},0,WHITE);
 
-            // показать инфу о камере и проекции
-            DrawText(TextFormat("Camera pos: [%.2f, %.2f, %.2f]", objCam.position.x, objCam.position.y, objCam.position.z), 16, 510, 14, RAYWHITE);
-            DrawText("Projection matrix (proj):", 16, 532, 14, YELLOW);
-            DrawText(TextFormat("[ %.3f %.3f %.3f %.3f ]", objCam.proj.m0, objCam.proj.m1, objCam.proj.m2, objCam.proj.m3), 16, 552, 12, LIGHTGRAY);
-            DrawText(TextFormat("[ %.3f %.3f %.3f %.3f ]", objCam.proj.m4, objCam.proj.m5, objCam.proj.m6, objCam.proj.m7), 16, 568, 12, LIGHTGRAY);
+        // информация о камере
+        DrawText(TextFormat("Mode: %s", orbitMode ? "ORBIT CAMERA" : "STATIC CAMERA"), 16, 500, 18, YELLOW);
+        DrawText(TextFormat("Camera pos: [%.2f, %.2f, %.2f]", cam.position.x, cam.position.y, cam.position.z), 16, 522, 14, RAYWHITE);
+        if (!orbitMode) {
+            DrawText("WASD/QE - Move camera", 16, 544, 14, GREEN);
+        }
+        if (orbitMode) {
+            DrawText("Projection matrix (manual):", 16, 540, 14, LIGHTGRAY);
+            DrawText(TextFormat("[%.3f %.3f %.3f %.3f]", objCam.proj.m0, objCam.proj.m1, objCam.proj.m2, objCam.proj.m3), 16, 558, 12, LIGHTGRAY);
+        }
 
-            // Старая правая панель GUI (как в оригинале)
-            GuiSetStyle(DEFAULT, TEXT_SIZE, 18);
-            GuiPanel(panel, nullptr);
+        // ---- GUI панель ----
+        GuiSetStyle(DEFAULT, TEXT_SIZE, 18);
+        GuiPanel(panel, nullptr);
 
-            float x = panel.x + 16;
-            float y = 16;
-            float w = panel.width - 32;
-            float h = 44;
+        float x = panel.x + 16;
+        float y = 16;
+        float w = panel.width - 32;
+        float h = 44;
 
-            if (GuiButton({x,y,w,h}, "ADD OBJ")) {
-                // если нет файлов — ничего не делать
-                if (!objFiles.empty()) {
-                    clampNextFile();
-                    std::string path = objFiles[nextFile];
-                    bool ok = addObj(path);
-                    if (ok) {
-                        // Advance nextFile only if adding succeeded
-                        nextFile = (nextFile + 1) % (int)objFiles.size();
-                    } else {
-                        // модель не загрузилась — удаляем из списка, чтобы не пытаться снова
-                        objFiles.erase(objFiles.begin() + nextFile);
-                        clampNextFile();
-                    }
-                }
-            }
-            y += h + 12;
+        // Кнопки
+        if (GuiButton({x,y,w,h}, "ADD OBJ")) {
+            if (!objFiles.empty()) addObj(objFiles[scene.size() % objFiles.size()]);
+        }
+        y += h + 12;
 
-            GuiToggle({x,y,w,h}, "MOVE WASD", &moveMode); y += h + 12;
-            GuiToggle({x,y,w,h}, "TEST BACKFACE", &testBackface); y += h + 12;
+        GuiToggle({x,y,w,h}, "MOVE WASD", &camControlEnabled); y += h + 12; // <-- изменено на camControlEnabled
+        GuiToggle({x,y,w,h}, "TEST BACKFACE", &showBack); y += h + 12;
+        GuiToggle({x,y,w,h}, "CAMERA ORBIT", &orbitMode); y += h + 12;
 
-            if (GuiButton({x,y,w,h}, "CLEAR")) {
-                for (auto &o : scene) if (o.valid) UnloadModel(o.model);
-                scene.clear();
-                selected = -1;
-            }
-            y += h + 18;
+        if (GuiButton({x,y,w,h}, "CLEAR")) {
+            for (auto &o : scene) if (o.valid) UnloadModel(o.model);
+            scene.clear();
+            selected = -1;
+        }
+        y += h + 18;
 
-            GuiLabel({x,y,w,28}, TextFormat("OBJs: %d", (int)scene.size())); y += 30;
-            GuiLabel({x,y,w,28}, TextFormat("CHOSEN: %d", selected)); y += 30;
+        GuiLabel({x,y,w,28}, TextFormat("OBJs: %d", (int)scene.size())); y += 30;
+        GuiLabel({x,y,w,28}, TextFormat("CHOSEN: %d", selected)); y += 30;
 
-            if (objFiles.empty()) GuiLabel({x, (float)sh-42, w, 28}, "NO OBJ FILES");
-            else GuiLabel({x, (float)sh-42, w, 28}, TextFormat("NEXT: %s", std::filesystem::path(objFiles[nextFile]).filename().string().c_str()));
+        // Добавьте слайдеры для настройки
+        GuiSlider({x,y,w,h}, "MOVE SPEED", TextFormat("%.1f", camMoveSpeed), &camMoveSpeed, 1.0f, 20.0f); y += h + 12;
+        if (orbitMode) {
+            GuiSlider({x,y,w,h}, "ORBIT RADIUS", TextFormat("%.1f", camOrbitRadius), &camOrbitRadius, 2.0f, 20.0f); y += h + 12;
+            GuiSlider({x,y,w,h}, "ORBIT SPEED", TextFormat("%.1f", camSpeed), &camSpeed, 0.1f, 3.0f); y += h + 12;
+        }
 
-            DrawFPS(10,10);
+        DrawFPS(10,10);
         EndDrawing();
     }
 
-    // Очистка ресурсов
     for (auto &o : scene) if (o.valid) UnloadModel(o.model);
     UnloadRenderTexture(rtex);
     CloseWindow();
