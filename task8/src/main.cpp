@@ -421,12 +421,7 @@ int main() {
 
     RenderTexture2D rtex = LoadRenderTexture(RENDER_WIDTH, RENDER_HEIGHT);
 
-    // ============================================
-    // ИЗМЕНЕНИЕ: Увеличена ширина правой панели
-    // ============================================
-    int panelW = 700;  // Было 550, стало 700
-    // ============================================
-
+    int panelW = 550;
     Vector2 scrollOffset = { 0, 0 };
 
     auto addObj = [&](const std::string& path, const std::string& name = "") {
@@ -560,7 +555,7 @@ int main() {
         // Рисуем viewport
         float viewportX = 20;
         float viewportY = 20;
-        float viewportW = sw - panelW - 40;  // Автоматически уменьшится, т.к. panelW больше
+        float viewportW = sw - panelW - 40;
         float viewportH = sh - 40;
 
         if (useZBuffer) {
@@ -582,17 +577,19 @@ int main() {
         GuiPanel(panel, "CONTROL PANEL");
 
         Rectangle scrollView = { panel.x, panel.y + 30, panel.width, panel.height - 30 };
-        Rectangle scrollContent = { 0, 0, scrollView.width - 20, 1800 };
+        Rectangle scrollContent = { 0, 0, scrollView.width - 20, 1400 };
 
         GuiScrollPanel(scrollView, nullptr, scrollContent, &scrollOffset, nullptr);
 
         BeginScissorMode(scrollView.x, scrollView.y, scrollView.width, scrollView.height);
 
-        float x = panel.x + 20 + scrollOffset.x;
-        float y = panel.y + 40 + scrollOffset.y;
+        float x = panel.x + 30 + scrollOffset.x;
+        float y = panel.y + 50 + scrollOffset.y;
         float w = panel.width - 60;
+        float xSlider = panel.x + 145 + scrollOffset.x;  // Сдвинули слайдер правее для места под текст слева
+        float wSlider = panel.width - 320;  // Уменьшили ширину слайдера для места под текст справа (230 пикселей)
         float h = 45;
-        float spacing = 10;
+        float spacing = 20;
 
         // === КНОПКИ ===
         GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
@@ -663,16 +660,16 @@ int main() {
         y += 35;
 
         // === СЛАЙДЕРЫ КАМЕРЫ ===
-        GuiSlider({ x, y, w, h }, "CAM SPEED", TextFormat("%.1f", camMoveSpeed),
+        GuiSlider({ xSlider, y, wSlider, h }, "CAM SPEED", TextFormat("%.1f", camMoveSpeed),
             &camMoveSpeed, 1.0f, 20.0f);
         y += h + spacing;
 
         if (orbitMode) {
-            GuiSlider({ x, y, w, h }, "ORBIT RADIUS", TextFormat("%.1f", camOrbitRadius),
+            GuiSlider({ xSlider, y, wSlider, h }, "ORBIT RADIUS", TextFormat("%.1f", camOrbitRadius),
                 &camOrbitRadius, 2.0f, 20.0f);
             y += h + spacing;
 
-            GuiSlider({ x, y, w, h }, "ORBIT SPEED", TextFormat("%.1f", camSpeed),
+            GuiSlider({ xSlider, y, wSlider, h }, "ORBIT SPEED", TextFormat("%.1f", camSpeed),
                 &camSpeed, 0.1f, 3.0f);
             y += h + spacing;
         }
@@ -681,28 +678,29 @@ int main() {
 
         // === УПРАВЛЕНИЕ ОБЪЕКТОМ ===
         if (selected >= 0 && selected < (int)scene.size()) {
+            GuiSetStyle(DEFAULT, TEXT_SIZE, 18);
             GuiLine({ x, y, w, 2 }, "OBJECT CONTROL");
             y += 25;
 
             Obj3D& obj = scene[selected];
 
-            GuiSlider({ x, y, w, h }, "POSITION X", TextFormat("%.2f", obj.pos.x),
+            GuiSlider({ xSlider, y, wSlider, h }, "POS X", TextFormat("%.2f", obj.pos.x),
                 &obj.pos.x, -10.0f, 10.0f);
             y += h + spacing;
 
-            GuiSlider({ x, y, w, h }, "POSITION Y", TextFormat("%.2f", obj.pos.y),
+            GuiSlider({ xSlider, y, wSlider, h }, "POS Y", TextFormat("%.2f", obj.pos.y),
                 &obj.pos.y, -10.0f, 10.0f);
             y += h + spacing;
 
-            GuiSlider({ x, y, w, h }, "POSITION Z", TextFormat("%.2f", obj.pos.z),
+            GuiSlider({ xSlider, y, wSlider, h }, "POS Z", TextFormat("%.2f", obj.pos.z),
                 &obj.pos.z, -10.0f, 10.0f);
             y += h + spacing;
 
-            GuiSlider({ x, y, w, h }, "SCALE", TextFormat("%.2f", obj.scale),
+            GuiSlider({ xSlider, y, wSlider, h }, "SCALE", TextFormat("%.2f", obj.scale),
                 &obj.scale, 0.1f, 5.0f);
             y += h + spacing;
 
-            GuiSlider({ x, y, w, h }, "ROTATION Y", TextFormat("%.0f", obj.rot.y),
+            GuiSlider({ xSlider, y, wSlider, h }, "ROT Y", TextFormat("%.0f", obj.rot.y),
                 &obj.rot.y, 0.0f, 360.0f);
             y += h + spacing;
         }
