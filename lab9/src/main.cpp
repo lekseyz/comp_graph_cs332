@@ -1,279 +1,346 @@
 #include "raylib.h"
+#include "raymath.h"
 #include "rlgl.h"
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <string>
-#include <sstream>
-#include <cmath>
-#include <raymath.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-// Function to load a model from an OBJ file
-Model LoadObjModel(const char* fileName);
-void CalculateNormals(Mesh *mesh);
+typedef enum {
+    SHADING_GOURAUD = 0,
+    SHADING_PHONG_TOON
+} ShadingMode;
 
-int main()
-{
-    // Initialization
-    const int screenWidth = 800;
-    const int screenHeight = 600;
+ShadingMode currentShading = SHADING_GOURAUD;
 
-    InitWindow(screenWidth, screenHeight, "3D Lighting");
+Mesh LoadMeshFromOBJ(const char* fileName) {
+    Mesh mesh = { 0 };
 
-    // Define the camera
-    Camera camera = { };
+    FILE* file = fopen(fileName, "r");
+    if (!file) {
+        printf("Error: Could not open file %s\n", fileName);
+        return mesh;
+    }
+
+    Vector3* tempVertices = (Vector3*)malloc(10000 * sizeof(Vector3));
+    int* tempIndices = (int*)malloc(30000 * sizeof(int));
+    int vertexCount = 0;
+    int indexCount = 0;
+
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        if (line[0] == 'v' && line[1] == ' ') {
+            float x, y, z;
+            sscanf(line, "v %f %f %f", &x, &y, &z);
+            tempVertices[vertexCount++] = (Vector3){ x, y, z };
+        }
+        else if (line[0] == 'f' && line[1] == ' ') {
+            int v1, v2, v3;
+            if (sscanf(line, "f %d %d %d", &v1, &v2, &v3) == 3) {
+                tempIndices[indexCount++] = v1 - 1;
+                tempIndices[indexCount++] = v2 - 1;
+                tempIndices[indexCount++] = v3 - 1;
+            }
+            else {
+                char* token = strtok(line + 2, " ");
+                int indices[3];
+                int idx = 0;
+                while (token && idx < 3) {
+                    sscanf(token, "%d", &indices[idx]);
+                    tempIndices[indexCount++] = indices[idx] - 1;
+                    idx++;
+                    token = strtok(NULL, " ");
+                }
+            }
+        }
+    }
+    fclose(file);
+
+    mesh.vertexCount = vertexCount;
+    mesh.triangleCount = indexCount / 3;
+
+    mesh.vertices = (float*)malloc(vertexCount * 3 * sizeof(float));
+    mesh.indices = (unsigned short*)malloc(indexCount * sizeof(unsigned short));
+    mesh.normals = (float*)malloc(vertexCount * 3 * sizeof(float));
+
+    for (int i = 0; i < vertexCount; i++) {
+        mesh.vertices[i * 3] = tempVertices[i].x;
+        mesh.vertices[i * 3 + 1] = tempVertices[i].y;
+        mesh.vertices[i * 3 + 2] = tempVertices[i].z;
+        mesh.normals[i * 3] = 0;
+        mesh.normals[i * 3 + 1] = 0;
+        mesh.normals[i * 3 + 2] = 0;
+    }
+
+    for (int i = 0; i < indexCount; i++) {
+        mesh.indices[i] = tempIndices[i];
+    }
+
+    for (int i = 0; i < mesh.triangleCount; i++) {
+        int idx1 = mesh.indices[i * 3];
+        int idx2 = mesh.indices[i * 3 + 1];
+        int idx3 = mesh.indices[i * 3 + 2];
+
+        Vector3 v1 = { mesh.vertices[idx1 * 3], mesh.vertices[idx1 * 3 + 1], mesh.vertices[idx1 * 3 + 2] };
+        Vector3 v2 = { mesh.vertices[idx2 * 3], mesh.vertices[idx2 * 3 + 1], mesh.vertices[idx2 * 3 + 2] };
+        Vector3 v3 = { mesh.vertices[idx3 * 3], mesh.vertices[idx3 * 3 + 1], mesh.vertices[idx3 * 3 + 2] };
+
+        Vector3 edge1 = Vector3Subtract(v2, v1);
+        Vector3 edge2 = Vector3Subtract(v3, v1);
+        Vector3 normal = Vector3Normalize(Vector3CrossProduct(edge1, edge2));
+
+        mesh.normals[idx1 * 3] += normal.x;
+        mesh.normals[idx1 * 3 + 1] += normal.y;
+        mesh.normals[idx1 * 3 + 2] += normal.z;
+
+        mesh.normals[idx2 * 3] += normal.x;
+        mesh.normals[idx2 * 3 + 1] += normal.y;
+        mesh.normals[idx2 * 3 + 2] += normal.z;
+
+        mesh.normals[idx3 * 3] += normal.x;
+        mesh.normals[idx3 * 3 + 1] += normal.y;
+        mesh.normals[idx3 * 3 + 2] += normal.z;
+    }
+
+    for (int i = 0; i < vertexCount; i++) {
+        Vector3 n = { mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2] };
+        n = Vector3Normalize(n);
+        mesh.normals[i * 3] = n.x;
+        mesh.normals[i * 3 + 1] = n.y;
+        mesh.normals[i * 3 + 2] = n.z;
+    }
+
+    free(tempVertices);
+    free(tempIndices);
+
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
+int main(void) {
+    const int screenWidth = 1200;
+    const int screenHeight = 800;
+
+    InitWindow(screenWidth, screenHeight, "3D Lighting: Gouraud vs Phong Toon Shading");
+
+    Camera camera = { 0 };
     camera.position = (Vector3){ 5.0f, 5.0f, 5.0f };
     camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    // Load the models
-    std::vector<Model> models;
-    FilePathList fileList = LoadDirectoryFilesEx("models", ".obj", false);
+    bool cameraActive = true;
 
-    for (unsigned int i = 0; i < fileList.count; i++) {
-        models.push_back(LoadObjModel(fileList.paths[i]));
+    Model models[10];
+    int modelCount = 0;
+
+    if (DirectoryExists("models")) {
+        FilePathList files = LoadDirectoryFilesEx("models", ".obj", false);
+        for (unsigned int i = 0; i < files.count && modelCount < 10; i++) {
+            Mesh mesh = LoadMeshFromOBJ(files.paths[i]);
+            if (mesh.vertexCount > 0) {
+                models[modelCount++] = LoadModelFromMesh(mesh);
+                printf("Loaded: %s\n", files.paths[i]);
+            }
+        }
+        UnloadDirectoryFiles(files);
     }
-    UnloadDirectoryFiles(fileList);
+
+    if (modelCount == 0) {
+        models[0] = LoadModelFromMesh(GenMeshSphere(1.0f, 32, 32));
+        modelCount = 1;
+    }
 
     int currentModelIndex = 0;
 
-    // Load the lighting shader
-    Shader lightingShader = LoadShader("lighting.vs", "lighting.fs");
+    const char* gouraudVS =
+        "#version 330\n"
+        "in vec3 vertexPosition;\n"
+        "in vec3 vertexNormal;\n"
+        "uniform mat4 mvp;\n"
+        "uniform mat4 matModel;\n"
+        "uniform vec3 lightPos;\n"
+        "uniform vec3 viewPos;\n"
+        "out vec3 fragColor;\n"
+        "void main() {\n"
+        "    gl_Position = mvp * vec4(vertexPosition, 1.0);\n"
+        "    vec3 worldPos = (matModel * vec4(vertexPosition, 1.0)).xyz;\n"
+        "    vec3 worldNormal = normalize(mat3(matModel) * vertexNormal);\n"
+        "    vec3 lightDir = normalize(lightPos - worldPos);\n"
+        "    float diff = max(dot(worldNormal, lightDir), 0.0);\n"
+        "    vec3 ambient = vec3(0.2);\n"
+        "    vec3 diffuse = vec3(0.8, 0.2, 0.2) * diff;\n"
+        "    fragColor = ambient + diffuse;\n"
+        "}\n";
 
-    // Get shader locations
-    lightingShader.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(lightingShader, "mvp");
-    lightingShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(lightingShader, "viewPos");
-    lightingShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(lightingShader, "matModel");
-    
-    // Set shader for the models
-    for (size_t i = 0; i < models.size(); i++) {
-        models[i].materials[0].shader = lightingShader;
-    }
-    
-    // Create a light
-    Vector3 lightPos = { 2.0f, 2.0f, 2.0f };
+    const char* gouraudFS =
+        "#version 330\n"
+        "in vec3 fragColor;\n"
+        "out vec4 finalColor;\n"
+        "void main() {\n"
+        "    finalColor = vec4(fragColor, 1.0);\n"
+        "}\n";
 
-    // Model transformation
-    Vector3 position = { 0.0f, 0.0f, 0.0f };
-    float rotation = 0.0f;
-    float scale = 1.0f;
+    const char* phongToonVS =
+        "#version 330\n"
+        "in vec3 vertexPosition;\n"
+        "in vec3 vertexNormal;\n"
+        "uniform mat4 mvp;\n"
+        "uniform mat4 matModel;\n"
+        "out vec3 fragPos;\n"
+        "out vec3 fragNormal;\n"
+        "void main() {\n"
+        "    gl_Position = mvp * vec4(vertexPosition, 1.0);\n"
+        "    fragPos = (matModel * vec4(vertexPosition, 1.0)).xyz;\n"
+        "    fragNormal = mat3(matModel) * vertexNormal;\n"
+        "}\n";
+
+    const char* phongToonFS =
+        "#version 330\n"
+        "in vec3 fragPos;\n"
+        "in vec3 fragNormal;\n"
+        "uniform vec3 lightPos;\n"
+        "uniform vec3 viewPos;\n"
+        "out vec4 finalColor;\n"
+        "void main() {\n"
+        "    vec3 normal = normalize(fragNormal);\n"
+        "    vec3 lightDir = normalize(lightPos - fragPos);\n"
+        "    float diff = max(dot(normal, lightDir), 0.0);\n"
+        "    \n"
+        "    vec3 color;\n"
+        "    if (diff < 0.3) color = vec3(0.2, 0.1, 0.5);\n"
+        "    else if (diff < 0.6) color = vec3(0.4, 0.2, 0.7);\n"
+        "    else color = vec3(0.6, 0.4, 0.9);\n"
+        "    \n"
+        "    vec3 viewDir = normalize(viewPos - fragPos);\n"
+        "    float edge = max(dot(viewDir, normal), 0.0);\n"
+        "    if (edge < 0.3) color = vec3(0.0);\n"
+        "    \n"
+        "    finalColor = vec4(color, 1.0);\n"
+        "}\n";
+
+    Shader gouraudShader = LoadShaderFromMemory(gouraudVS, gouraudFS);
+    Shader phongToonShader = LoadShaderFromMemory(phongToonVS, phongToonFS);
+
+    gouraudShader.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(gouraudShader, "mvp");
+    gouraudShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(gouraudShader, "matModel");
+    gouraudShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(gouraudShader, "viewPos");
+    int gouraudLightLoc = GetShaderLocation(gouraudShader, "lightPos");
+
+    phongToonShader.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(phongToonShader, "mvp");
+    phongToonShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(phongToonShader, "matModel");
+    phongToonShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(phongToonShader, "viewPos");
+    int phongLightLoc = GetShaderLocation(phongToonShader, "lightPos");
+
+    Vector3 lightPos = { 3.0f, 4.0f, 3.0f };
+
+    Mesh planeMesh = GenMeshPlane(20.0f, 20.0f, 1, 1);
+    Model planeModel = LoadModelFromMesh(planeMesh);
+    planeModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = (Color){ 80, 80, 80, 255 };
+
+    Vector3 modelPosition = { 0.0f, 1.0f, 0.0f };
+    float modelRotation = 0.0f;
+    float modelScale = 1.0f;
 
     SetTargetFPS(60);
-    
-    // Enable back-face culling
-    rlEnableBackfaceCulling();
 
-    // Main game loop
-    while (!WindowShouldClose())
-    {
-        // Update
-        UpdateCamera(&camera, CAMERA_ORBITAL);
-
-        // Handle model transformations
-        if (IsKeyDown(KEY_UP)) position.z += 0.1f;
-        if (IsKeyDown(KEY_DOWN)) position.z -= 0.1f;
-        if (IsKeyDown(KEY_LEFT)) position.x += 0.1f;
-        if (IsKeyDown(KEY_RIGHT)) position.x -= 0.1f;
-        if (IsKeyDown(KEY_A)) rotation += 1.0f;
-        if (IsKeyDown(KEY_D)) rotation -= 1.0f;
-        if (IsKeyDown(KEY_W)) scale += 0.01f;
-        if (IsKeyDown(KEY_S)) scale -= 0.01f;
-        if (scale < 0.1f) scale = 0.1f;
-
-        // Handle model switching
-        if (IsKeyPressed(KEY_M))
-        {
-            if (!models.empty()) {
-                currentModelIndex = (currentModelIndex + 1) % models.size();
-            }
+    while (!WindowShouldClose()) {
+        if (cameraActive) {
+            UpdateCamera(&camera, CAMERA_ORBITAL);
         }
 
+        if (IsKeyPressed(KEY_C)) {
+            cameraActive = !cameraActive;
+        }
 
-        // Update the lighting shader with the light position
+        if (IsKeyDown(KEY_UP)) modelPosition.z += 0.05f;
+        if (IsKeyDown(KEY_DOWN)) modelPosition.z -= 0.05f;
+        if (IsKeyDown(KEY_A)) modelPosition.x += 0.05f;
+        if (IsKeyDown(KEY_D)) modelPosition.x -= 0.05f;
+
+        if (IsKeyDown(KEY_W)) modelPosition.y += 0.05f;
+        if (IsKeyDown(KEY_S)) modelPosition.y -= 0.05f;
+
+        if (modelPosition.y < 0.0f) modelPosition.y = 0.0f;
+
+        if (IsKeyDown(KEY_Q)) modelRotation += 1.0f;
+        if (IsKeyDown(KEY_E)) modelRotation -= 1.0f;
+
+        if (IsKeyDown(KEY_Z)) modelScale -= 0.01f;
+        if (IsKeyDown(KEY_X)) modelScale += 0.01f;
+        if (modelScale < 0.1f) modelScale = 0.1f;
+
+        if (IsKeyPressed(KEY_M)) {
+            currentModelIndex = (currentModelIndex + 1) % modelCount;
+        }
+
+        if (IsKeyPressed(KEY_SPACE)) {
+            currentShading = (currentShading == SHADING_GOURAUD) ? SHADING_PHONG_TOON : SHADING_GOURAUD;
+        }
+
+        Shader currentShader = (currentShading == SHADING_GOURAUD) ? gouraudShader : phongToonShader;
+        int lightLoc = (currentShading == SHADING_GOURAUD) ? gouraudLightLoc : phongLightLoc;
+
         float lightPosF[3] = { lightPos.x, lightPos.y, lightPos.z };
-        SetShaderValue(lightingShader, GetShaderLocation(lightingShader, "lightPos"), lightPosF, SHADER_UNIFORM_VEC3);
-        
-        // Update the lighting shader with the view position
         float viewPosF[3] = { camera.position.x, camera.position.y, camera.position.z };
-        SetShaderValue(lightingShader, lightingShader.locs[SHADER_LOC_VECTOR_VIEW], viewPosF, SHADER_UNIFORM_VEC3);
 
+        SetShaderValue(currentShader, lightLoc, lightPosF, SHADER_UNIFORM_VEC3);
+        SetShaderValue(currentShader, currentShader.locs[SHADER_LOC_VECTOR_VIEW], viewPosF, SHADER_UNIFORM_VEC3);
 
-        // Draw
+        models[currentModelIndex].materials[0].shader = currentShader;
+
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
         BeginMode3D(camera);
 
-        if (!models.empty()) {
-            Model currentModel = models[currentModelIndex];
-            DrawModelEx(currentModel, position, { 0.0f, 1.0f, 0.0f }, rotation, { scale, scale, scale }, RED);
+        DrawModel(planeModel, (Vector3) { 0, -0.01f, 0 }, 1.0f, GRAY);
 
-            // Visualize normals
-            Vector3 rotationAxis = { 0.0f, 1.0f, 0.0f };
-            Matrix transform = MatrixMultiply(MatrixMultiply(MatrixScale(scale, scale, scale),
-                                                            MatrixRotate(rotationAxis, rotation * DEG2RAD)),
-                                            MatrixTranslate(position.x, position.y, position.z));
+        Matrix transform = MatrixIdentity();
+        transform = MatrixMultiply(transform, MatrixScale(modelScale, modelScale, modelScale));
+        transform = MatrixMultiply(transform, MatrixRotateY(modelRotation * DEG2RAD));
+        transform = MatrixMultiply(transform, MatrixTranslate(modelPosition.x, modelPosition.y, modelPosition.z));
 
-            Mesh mesh = currentModel.meshes[0];
-            for (int i = 0; i < mesh.vertexCount; i++)
-            {
-                Vector3 vertex = { mesh.vertices[i*3], mesh.vertices[i*3+1], mesh.vertices[i*3+2] };
-                Vector3 normal = { mesh.normals[i*3], mesh.normals[i*3+1], mesh.normals[i*3+2] };
+        models[currentModelIndex].transform = transform;
+        DrawModel(models[currentModelIndex], Vector3Zero(), 1.0f, WHITE);
 
-                Vector3 transformedVertex = Vector3Transform(vertex, transform);
-                
-                Matrix inv_transform = MatrixInvert(transform);
-                Matrix inv_transpose_transform = MatrixTranspose(inv_transform);
-                Vector3 transformedNormal = Vector3Transform(normal, inv_transpose_transform);
-                transformedNormal = Vector3Normalize(transformedNormal);
+        DrawSphere(lightPos, 0.2f, YELLOW);
 
-                float normalLength = 0.2f;
-                Vector3 normalEnd = Vector3Add(transformedVertex, Vector3Scale(transformedNormal, normalLength));
-
-                DrawLine3D(transformedVertex, normalEnd, BLUE);
-            }
-        }
-        
         DrawGrid(10, 1.0f);
-        DrawSphereEx(lightPos, 0.2f, 8, 8, YELLOW);
 
         EndMode3D();
 
-        DrawText("Use arrow keys to move, A/D to rotate, W/S to scale", 10, 10, 20, DARKGRAY);
-        DrawText("Press M to switch models", 10, 40, 20, DARKGRAY);
-        DrawFPS(10, 70);
+        DrawText("Controls:", 10, 10, 20, DARKGRAY);
+        DrawText("SPACE - Switch shading mode", 10, 35, 20, DARKGRAY);
+        DrawText("C - Toggle camera (orbital/static)", 10, 60, 20, DARKGRAY);
+        DrawText("M - Switch model", 10, 85, 20, DARKGRAY);
+        DrawText("Arrow keys - Move forward/backward (Z)", 10, 110, 20, DARKGRAY);
+        DrawText("A/D - Move left/right (X)", 10, 135, 20, DARKGRAY);
+        DrawText("W/S - Move up/down (Y)", 10, 160, 20, DARKGRAY);
+        DrawText("Q/E - Rotate left/right", 10, 185, 20, DARKGRAY);
+        DrawText("Z/X - Scale down/up", 10, 210, 20, DARKGRAY);
 
+        const char* shadingName = (currentShading == SHADING_GOURAUD) ? "Gouraud (Lambert)" : "Phong (Toon)";
+        const char* cameraStatus = cameraActive ? "Active" : "Static";
+
+        DrawText(TextFormat("Shading: %s", shadingName), 10, 240, 20, RED);
+        DrawText(TextFormat("Camera: %s", cameraStatus), 10, 265, 20, BLUE);
+        DrawText(TextFormat("Height: %.2f", modelPosition.y), 10, 290, 20, GREEN);
+        DrawText(TextFormat("Scale: %.2f", modelScale), 10, 315, 20, PURPLE);
+
+        DrawFPS(10, 340);
 
         EndDrawing();
     }
 
-    // De-Initialization
-    UnloadShader(lightingShader);
-    for (size_t i = 0; i < models.size(); i++) {
+    UnloadShader(gouraudShader);
+    UnloadShader(phongToonShader);
+    for (int i = 0; i < modelCount; i++) {
         UnloadModel(models[i]);
     }
+    UnloadModel(planeModel);
+
     CloseWindow();
-
     return 0;
-}
-
-Model LoadObjModel(const char* fileName)
-{
-    printf("Loading model: %s\n", fileName);
-    Model model = { };
-    std::vector<Vector3> vertices;
-    std::vector<int> face_indices;
-
-    std::ifstream file(fileName);
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open file " << fileName << std::endl;
-        return model;
-    }
-
-    std::string line;
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string type;
-        ss >> type;
-
-        if (type == "v") {
-            Vector3 vertex;
-            ss >> vertex.x >> vertex.y >> vertex.z;
-            vertices.push_back(vertex);
-        } else if (type == "f") {
-            std::string v1_str, v2_str, v3_str;
-            ss >> v1_str >> v2_str >> v3_str;
-            
-            face_indices.push_back(std::stoi(v1_str.substr(0, v1_str.find('/'))) - 1);
-            face_indices.push_back(std::stoi(v2_str.substr(0, v2_str.find('/'))) - 1);
-            face_indices.push_back(std::stoi(v3_str.substr(0, v3_str.find('/'))) - 1);
-        }
-    }
-
-    file.close();
-
-    Mesh mesh = { };
-    mesh.vertexCount = vertices.size();
-    mesh.triangleCount = face_indices.size() / 3;
-
-    mesh.vertices = new float[mesh.vertexCount * 3];
-    mesh.indices = new unsigned short[face_indices.size()];
-
-    for (size_t i = 0; i < vertices.size(); ++i) {
-        mesh.vertices[i * 3] = vertices[i].x;
-        mesh.vertices[i * 3 + 1] = vertices[i].y;
-        mesh.vertices[i * 3 + 2] = vertices[i].z;
-    }
-
-    for (size_t i = 0; i < face_indices.size(); ++i) {
-        mesh.indices[i] = face_indices[i];
-    }
-    
-    mesh.normals = new float[mesh.vertexCount * 3]();
-
-    CalculateNormals(&mesh);
-
-    UploadMesh(&mesh, false);
-    model = LoadModelFromMesh(mesh);
-
-    // Clean up CPU memory
-    // delete[] mesh.vertices;
-    // delete[] mesh.indices;
-    // delete[] mesh.normals;
-
-    return model;
-}
-
-void CalculateNormals(Mesh *mesh)
-{
-    printf("Calculating normals...\n");
-    for(int i = 0; i < mesh->triangleCount; i++) {
-        unsigned short index1 = mesh->indices[i*3];
-        unsigned short index2 = mesh->indices[i*3 + 1];
-        unsigned short index3 = mesh->indices[i*3 + 2];
-
-        Vector3 v1 = {mesh->vertices[index1*3], mesh->vertices[index1*3+1], mesh->vertices[index1*3+2]};
-        Vector3 v2 = {mesh->vertices[index2*3], mesh->vertices[index2*3+1], mesh->vertices[index2*3+2]};
-        Vector3 v3 = {mesh->vertices[index3*3], mesh->vertices[index3*3+1], mesh->vertices[index3*3+2]};
-
-        Vector3 edge1 = {v2.x - v1.x, v2.y - v1.y, v2.z - v1.z};
-        Vector3 edge2 = {v3.x - v1.x, v3.y - v1.y, v3.z - v1.z};
-
-        Vector3 normal = {
-            edge1.y * edge2.z - edge1.z * edge2.y,
-            edge1.z * edge2.x - edge1.x * edge2.z,
-            edge1.x * edge2.y - edge1.y * edge2.x
-        };
-        
-        // Normalize the normal
-        float length = sqrt(normal.x*normal.x + normal.y*normal.y + normal.z*normal.z);
-        if (length != 0) {
-            normal.x /= length;
-            normal.y /= length;
-            normal.z /= length;
-        }
-
-        mesh->normals[index1*3] += normal.x;
-        mesh->normals[index1*3+1] += normal.y;
-        mesh->normals[index1*3+2] += normal.z;
-        mesh->normals[index2*3] += normal.x;
-        mesh->normals[index2*3+1] += normal.y;
-        mesh->normals[index2*3+2] += normal.z;
-        mesh->normals[index3*3] += normal.x;
-        mesh->normals[index3*3+1] += normal.y;
-        mesh->normals[index3*3+2] += normal.z;
-    }
-    
-    // Normalize all the vertex normals
-    for (int i=0; i < mesh->vertexCount; i++) {
-        Vector3 normal = {mesh->normals[i*3], mesh->normals[i*3+1], mesh->normals[i*3+2]};
-        float length = sqrt(normal.x*normal.x + normal.y*normal.y + normal.z*normal.z);
-        if (length != 0) {
-            mesh->normals[i*3] /= length;
-            mesh->normals[i*3+1] /= length;
-            mesh->normals[i*3+2] /= length;
-        }
-    }
 }
