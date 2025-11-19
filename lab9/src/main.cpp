@@ -286,11 +286,12 @@ int main(void) {
     if (DirectoryExists("models")) {
         FilePathList files = LoadDirectoryFilesEx("models", ".obj", false);
         for (unsigned int i = 0; i < files.count && modelCount < 10; i++) {
-            Mesh mesh = LoadMeshFromOBJ(files.paths[i]);
-            if (mesh.vertexCount > 0) {
-                models[modelCount++] = LoadModelFromMesh(mesh);
-                printf("Loaded: %s\n", files.paths[i]);
-            }
+            models[modelCount++] = LoadModel(files.paths[i]);
+            // Mesh mesh = LoadMeshFromOBJ(files.paths[i]);
+            // if (mesh.vertexCount > 0) {
+            //     models[modelCount++] = LoadModelFromMesh(mesh);
+            //     printf("Loaded: %s\n", files.paths[i]);
+            // }
         }
         UnloadDirectoryFiles(files);
     }
