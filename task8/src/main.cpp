@@ -10,9 +10,6 @@
 #include <limits>
 #include <cmath>
 
-// ================================
-// ===  Структуры и функции     ===
-// ================================
 
 struct Obj3D {
     Model model;
@@ -346,9 +343,7 @@ void DrawZBufferToImage(Image& img, const ZBuffer& zbuf) {
     }
 }
 
-// ================================
 // ===           MAIN           ===
-// ================================
 
 int main() {
     InitWindow(1800, 1000, "Z-Buffer Algorithm | Backface Culling Demo");

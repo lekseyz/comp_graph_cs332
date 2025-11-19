@@ -1,515 +1,329 @@
-#include "raylib.h"
 #define RAYGUI_IMPLEMENTATION
+#include "raylib.h"
 #include "raygui.h"
-#include "raymath.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cfloat>
-#include <cstdio>
-#include <climits>
-#include <cstring>
 #include <vector>
+#include <cmath>
+#include <algorithm>
 
-#pragma region layout
-#define WINDOW_WIDTH  800
-#define WINDOW_HIGHT  600
+struct GHNode {
+    Vector2 p;
+    bool isInter;
+    bool entry;
+    bool visited;
+    float alpha;
+    GHNode* next;
+    GHNode* prev;
+    GHNode* neighbor;
+    int pid;
+};
 
-#define DRAW_BOX_WIDTH  520
-#define DRAW_BOX_HIGHT  600
+static float Cross(Vector2 a, Vector2 b){ return a.x*b.y - a.y*b.x; }
+static Vector2 Sub(Vector2 a, Vector2 b){ return {a.x-b.x, a.y-b.y}; }
+static float Dot(Vector2 a, Vector2 b){ return a.x*b.x + a.y*b.y; }
 
-#define ELEMENTS_X  (DRAW_BOX_WIDTH + 10)
-#define ELEMENTS_W  (WINDOW_WIDTH - DRAW_BOX_WIDTH - 20)
-#define ELEMENTS_H  44
-#define PAD         6
-#pragma endregion
+static bool SegInter(Vector2 a, Vector2 b, Vector2 c, Vector2 d, float &t, float &u, Vector2 &p){
+    Vector2 r = Sub(b,a);
+    Vector2 s = Sub(d,c);
 
-#pragma region misc
-static constexpr float EPS = 1e-5f;
+    float denom = Cross(r,s);
+    float eps = 1e-8f;
 
-static inline Vector2 V2(float x, float y) { return Vector2{ x, y }; }
-static inline Vector2 Add(Vector2 a, Vector2 b){ return Vector2Add(a,b); }
-static inline Vector2 Sub(Vector2 a, Vector2 b){ return Vector2Subtract(a,b); }
-static inline Vector2 Mul(Vector2 a, float s){ return Vector2Scale(a, s); }
-static inline float  Len(Vector2 a){ return Vector2Length(a); }
-static inline float  Dot(Vector2 a, Vector2 b){ return Vector2DotProduct(a,b); }
+    if (fabsf(denom) < eps) return false;
+    Vector2 ac = Sub(c,a);
 
-static inline float CrossV(Vector2 a, Vector2 b){ return a.x*b.y - a.y*b.x; }
-static inline bool  ApproxEq(float a, float b, float e=EPS){ return std::fabs(a-b) <= e; }
-static inline bool  ApproxEqPt(Vector2 a, Vector2 b, float e=EPS){ return std::fabs(a.x-b.x)<=e && std::fabs(a.y-b.y)<=e; }
-#pragma endregion
+    t = Cross(ac,s)/denom;
+    u = Cross(ac,r)/denom;
 
-static inline float Orient(Vector2 a, Vector2 b, Vector2 c) { return CrossV(Sub(b,a), Sub(c,a)); }
+    if (t < -eps || t > 1+eps || u < -eps || u > 1+eps) return false;
 
-static void RemoveCollinear(std::vector<Vector2>& poly){
-    if(poly.size() < 3) return;
-    std::vector<Vector2> out;
-    out.reserve(poly.size());
-    for(size_t i=0;i<poly.size();++i){
-        Vector2 prev = poly[(i + poly.size() - 1) % poly.size()];
-        Vector2 curr = poly[i];
-        Vector2 next = poly[(i + 1) % poly.size()];
-        float cr = CrossV(Sub(curr, prev), Sub(next, curr));
-        if(std::fabs(cr) > 1e-6f) out.push_back(curr);
-    }
-    if(out.size() >= 3) poly.swap(out);
-}
-
-static float SignedArea(const std::vector<Vector2>& poly){
-    double A = 0.0;
-    size_t n = poly.size();
-    for(size_t i=0;i<n;i++){
-        Vector2 a = poly[i];
-        Vector2 b = poly[(i+1)%n];
-        A += (double)a.x*b.y - (double)a.y*b.x;
-    }
-    return (float)(A*0.5);
-}
-
-static void EnsureCCW(std::vector<Vector2>& poly){
-    if(poly.size() < 3) return;
-    Vector2 c{0,0};
-    for(auto& p: poly) { c = Vector2Add(c, p); }
-    c = Vector2Scale(c, 1.0f/(float)poly.size());
-    std::sort(poly.begin(), poly.end(), [&](const Vector2& A, const Vector2& B){
-        float angA = atan2f(A.y - c.y, A.x - c.x);
-        float angB = atan2f(B.y - c.y, B.x - c.x);
-        return angA < angB;
-    });
-    if(SignedArea(poly) < 0) std::reverse(poly.begin(), poly.end());
-}
-
-static bool IsConvexCCW(const std::vector<Vector2>& poly){
-    if(poly.size() < 3) return false;
-    float sign = 0;
-    size_t n = poly.size();
-    for(size_t i=0;i<n;i++){
-        Vector2 a = poly[i];
-        Vector2 b = poly[(i+1)%n];
-        Vector2 c = poly[(i+2)%n];
-        float o = Orient(a,b,c);
-        if(std::fabs(o) < 1e-6f) continue;
-        if(sign == 0) sign = (o>0)? 1.0f : -1.0f;
-        else if(o*sign < 0) return false;
-    }
-    return SignedArea(poly) > 0;
-}
-
-static bool PointInConvex(const std::vector<Vector2>& poly, Vector2 p){
-    if(poly.size() < 3) return false;
-    for(size_t i=0;i<poly.size();++i){
-        Vector2 a = poly[i];
-        Vector2 b = poly[(i+1)%poly.size()];
-        if(Orient(a,b,p) < -1e-6f) return false;
-    }
+    t = fminf(fmaxf(t,0.0f),1.0f);
+    u = fminf(fmaxf(u,0.0f),1.0f);
+    p = {a.x + t*r.x, a.y + t*r.y};
     return true;
 }
 
-static bool SegmentIntersect(Vector2 A, Vector2 B, Vector2 C, Vector2 D,
-                             float& t, float& u, Vector2& P)
-{
-    Vector2 r = Sub(B,A);
-    Vector2 s = Sub(D,C);
-    float rxs = CrossV(r,s);
-    if(std::fabs(rxs) < 1e-8f){
-        return false; 
+static bool PointInPoly(const std::vector<Vector2>& poly, Vector2 q){
+    bool c = false;
+    int n = poly.size();
+
+    for(int i = 0, j = n-1 ;i < n; j = i++){
+        Vector2 pi=poly[i], pj=poly[j];
+        bool cond=((pi.y>q.y)!=(pj.y>q.y)) && (q.x < (pj.x-pi.x)*(q.y-pi.y)/(pj.y-pi.y+0.0000001f)+pi.x);
+        if(cond) c=!c;
     }
-    t = CrossV(Sub(C,A), s) / rxs;
-    u = CrossV(Sub(C,A), r) / rxs;
-    if(t < -1e-6f || t > 1+1e-6f || u < -1e-6f || u > 1+1e-6f) return false;
-    t = std::clamp(t, 0.0f, 1.0f);
-    u = std::clamp(u, 0.0f, 1.0f);
-    P = Add(A, Mul(r, t));
-    return true;
+    return c;
 }
 
-// ------------------- DRAW POLYGON -------------------
-static void FillPolygonScanline(Image* img, Color color, const std::vector<Vector2>& poly)
-{
-    if(poly.size() < 3) return;
+static GHNode* MakeCycle(const std::vector<Vector2>& poly, int pid){
+    if(poly.empty()) return nullptr;
+    GHNode* first=nullptr;
+    GHNode* prev=nullptr;
 
-    int xmin = INT_MAX, xmax = INT_MIN;
-    int ymin = INT_MAX, ymax = INT_MIN;
+    for(size_t i = 0; i < poly.size(); ++i){
+        GHNode* n = new GHNode();
 
-    for(auto&p: poly){
-        xmin = std::min(xmin, (int)std::floor(p.x));
-        xmax = std::max(xmax, (int)std::ceil (p.x));
-        ymin = std::min(ymin, (int)std::floor(p.y));
-        ymax = std::max(ymax, (int)std::ceil (p.y));
+        n->p=poly[i];
+        n->isInter=false;
+        n->entry=false;
+        n->visited=false;
+        n->alpha=-1.0f;
+        n->neighbor=nullptr;
+        n->pid=pid;
+        n->prev=prev;
+
+        if(prev) prev->next=n;
+        else first=n;
+        prev=n;
     }
+    first->prev=prev;
+    prev->next=first;
+    return first;
+}
 
-    xmin = std::max(xmin, 0);
-    ymin = std::max(ymin, 0);
-    xmax = std::min(xmax, (int)img->width-1);
-    ymax = std::min(ymax, (int)img->height-1);
+static void InsertAfter(GHNode* at, GHNode* n){
+    n->next=at->next;
+    n->prev=at;
+    at->next->prev=n;
+    at->next=n;
+}
 
-    std::vector<int> inter; inter.reserve(poly.size());
+static void InsertInEdge(GHNode* a0, GHNode* a1, GHNode* ins){
+    GHNode* it=a0;
+    while(it!=a1 && it->isInter && it->alpha<=ins->alpha) it=it->next;
+    while(it!=a1 && !it->isInter) it=it->next;
+    GHNode* pos=a0;
+    for(GHNode* t=a0->next; ; t=t->next){
+        if(t==a1 || (t->isInter && t->alpha>ins->alpha)){ pos=t->prev; break; }
+        if(t==a0) { pos=a0; break; }
+    }
+    InsertAfter(pos,ins);
+}
 
-    for(int y=ymin; y<=ymax; ++y){
-        inter.clear();
-        for(size_t i=0;i<poly.size();++i){
-            Vector2 v1 = poly[i];
-            Vector2 v2 = poly[(i+1)%poly.size()];
-            if(std::fabs(v1.y - v2.y) < 1e-6f) continue;
-            float yminEdge = std::min(v1.y, v2.y);
-            float ymaxEdge = std::max(v1.y, v2.y);
-            if(y >= (int)std::floor(yminEdge) && y < (int)std::ceil(ymaxEdge)){
-                float x = v1.x + (y - v1.y) * (v2.x - v1.x) / (v2.y - v1.y);
-                inter.push_back((int)std::round(x));
+static void CollectNodes(GHNode* head, std::vector<GHNode*>& out){
+    if(!head) return;
+    GHNode* it=head;
+    do{ out.push_back(it); it=it->next; }while(it!=head);
+}
+
+static std::vector<GHNode*> Intersections(GHNode* A, GHNode* B){
+    std::vector<GHNode*> aNodes; CollectNodes(A,aNodes);
+    std::vector<GHNode*> bNodes; CollectNodes(B,bNodes);
+
+    for(size_t i = 0; i < aNodes.size(); ++i){
+        GHNode* a0=aNodes[i];
+        GHNode* a1=aNodes[(i+1)%aNodes.size()];
+
+        for(size_t j=0;j<bNodes.size();++j){
+            GHNode* b0=bNodes[j];
+            GHNode* b1=bNodes[(j+1)%bNodes.size()];
+    
+            float ta, tb; Vector2 ip;
+
+            if(SegInter(a0->p,a1->p,b0->p,b1->p,ta,tb,ip)){
+                GHNode* na = new GHNode();
+                na->p=ip; na->isInter=true; na->alpha=ta; na->visited=false; na->pid=a0->pid;
+
+                GHNode* nb = new GHNode();
+                nb->p=ip; nb->isInter=true; nb->alpha=tb; nb->visited=false; nb->pid=b0->pid;
+
+                na->neighbor=nb; nb->neighbor=na;
+                InsertInEdge(a0,a1,na);
+                InsertInEdge(b0,b1,nb);
             }
         }
-        std::sort(inter.begin(), inter.end());
-        for(size_t j=0;j+1<inter.size(); j+=2){
-            int x1 = std::max(0, std::min(inter[j],     (int)img->width-1));
-            int x2 = std::max(0, std::min(inter[j + 1], (int)img->width-1));
-            if(x2 < x1) std::swap(x1,x2);
-            for(int x=x1; x<=x2; ++x) ImageDrawPixel(img, x, y, color);
+    }
+    return {};
+}
+
+static void MarkEntry(GHNode* A, GHNode* B){
+    std::vector<GHNode*> a; CollectNodes(A,a);
+    std::vector<GHNode*> b; CollectNodes(B,b);
+    std::vector<Vector2> aPoly, bPoly;
+
+    for(auto* n:a) if(!n->isInter) aPoly.push_back(n->p);
+    for(auto* n:b) if(!n->isInter) bPoly.push_back(n->p);
+
+    bool inside = PointInPoly(bPoly, aPoly.empty()?A->p:aPoly[0]);
+    GHNode* it=A;
+    do{
+        if(it->isInter && !it->visited){
+            it->entry = !inside;
+            it->neighbor->entry = inside;
+            inside = !inside;
         }
-    }
+        it=it->next;
+    }while(it!=A);
 }
 
-static void StrokePolygon(Image* img, Color /*col*/, const std::vector<Vector2>& poly){
-    if(poly.size() < 2) return;
-    for(size_t i=0;i<poly.size();++i){
-        Vector2 a = poly[i];
-        ImageDrawCircle(img, (int)std::round(a.x), (int)std::round(a.y), 2, BLACK);
-    }
-}
+static std::vector<std::vector<Vector2>> Traverse(GHNode* A){
+    std::vector<std::vector<Vector2>> res;
+    std::vector<GHNode*> a; CollectNodes(A,a);
+    std::vector<GHNode*> inters;
 
+    for(auto* n:a) if(n->isInter) inters.push_back(n);
 
-struct Edge { Vector2 a,b; };
+    for(auto* n:inters){
+        if(!n->visited && n->entry){
+            std::vector<Vector2> poly;
+            GHNode* start=n;
+            GHNode* cur=n;
 
-static std::vector<Edge> SubdivideByIntersections(const std::vector<Vector2>& P,
-                                                  const std::vector<Vector2>& Q)
-{
-    std::vector<Edge> out;
-    if(P.size()<2) return out;
-    for(size_t i=0;i<P.size();++i){
-        Vector2 A = P[i];
-        Vector2 B = P[(i+1)%P.size()];
-        std::vector<std::pair<float,Vector2>> cuts;
-        cuts.push_back({0.0f, A});
-        cuts.push_back({1.0f, B});
-
-        for(size_t j=0;j<Q.size();++j){
-            Vector2 C = Q[j];
-            Vector2 D = Q[(j+1)%Q.size()];
-            float t,u; Vector2 X;
-            if(SegmentIntersect(A,B,C,D,t,u,X)){
-                bool dup = false;
-                for(auto&pr: cuts){
-                    if(std::fabs(pr.first - t) < 1e-5f || ApproxEqPt(pr.second, X))
-                    { dup = true; break; }
+            do{
+                poly.push_back(cur->p);
+                if(cur->isInter){
+                    cur->visited=true;
+                    cur->neighbor->visited=true;
+                    if(cur->entry) cur=cur->neighbor->next;
+                    else cur=cur->neighbor->prev;
+                }else{
+                    cur=cur->next;
                 }
-                if(!dup) cuts.push_back({t, X});
-            }
-        }
+            }while(cur!=start && cur!=nullptr);
 
-        std::sort(cuts.begin(), cuts.end(),
-                  [](auto&L, auto&R){ return L.first < R.first; });
-
-        for(size_t k=0;k+1<cuts.size();++k){
-            Vector2 S = cuts[k].second;
-            Vector2 E = cuts[k+1].second;
-            if(Len(Sub(E,S)) > 1e-5f) out.push_back({S,E});
-        }
-    }
-    return out;
-}
-
-static bool MidpointInside(const std::vector<Vector2>& poly, const Edge& e){
-    Vector2 m = Vector2Scale(Vector2Add(e.a, e.b), 0.5f);
-    return PointInConvex(poly, m);
-}
-
-static std::vector<std::vector<Vector2>> BuildCycles(const std::vector<Edge>& edges){
-    std::vector<std::vector<Vector2>> cycles;
-    std::vector<char> used(edges.size(), 0);
-
-    auto findNext = [&](Vector2 cur)->int{
-        for(size_t i=0;i<edges.size();++i){
-            if(used[i]) continue;
-            if(ApproxEqPt(edges[i].a, cur)) return (int)i;
-        }
-        return -1;
-    };
-
-    for(size_t i=0;i<edges.size();++i){
-        if(used[i]) continue;
-        std::vector<Vector2> loop;
-        loop.push_back(edges[i].a);
-        loop.push_back(edges[i].b);
-        used[i] = 1;
-
-        Vector2 start = edges[i].a;
-        Vector2 cur   = edges[i].b;
-
-        int guard = 0;
-        while(!ApproxEqPt(cur, start) && guard < 10000){
-            int j = findNext(cur);
-            if(j<0) break;
-            used[j] = 1;
-            loop.push_back(edges[j].b);
-            cur = edges[j].b;
-            guard++;
-        }
-
-        if(loop.size() >= 3){
-            if(ApproxEqPt(loop.front(), loop.back())) loop.pop_back();
-            RemoveCollinear(loop);
-            if(loop.size() >= 3){
-                if(SignedArea(loop) < 0) std::reverse(loop.begin(), loop.end());
-                cycles.push_back(loop);
+            
+            if(poly.size()>=3){
+                std::vector<Vector2> clean;
+                clean.reserve(poly.size());
+                for(size_t i=0;i<poly.size();++i){
+                    Vector2 p=poly[i];
+                    if(i==0 || (fabsf(p.x-clean.back().x)>0.5f || fabsf(p.y-clean.back().y)>0.5f)) clean.push_back(p);
+                }
+                if(clean.size()>=3) res.push_back(clean);
             }
         }
     }
-    return cycles;
+    return res;
 }
 
-static float crossXZ(const Vector2& a, const Vector2& b, const Vector2& c){
-    return CrossV(Sub(b,a), Sub(c,a));
+static void FreeCycle(GHNode* head){
+    if(!head) return;
+    GHNode* it=head->next;
+    while(it!=head){
+        GHNode* n=it;
+        it=it->next;
+        delete n;
+    }
+    delete head;
 }
 
-static std::vector<Vector2> ConvexHull(std::vector<Vector2> pts){
-    if(pts.size()<=1) return pts;
-
-    auto lessXY = [](const Vector2& A, const Vector2& B){
-        if(!ApproxEq(A.x, B.x)) return A.x < B.x;
-        return A.y < B.y - EPS;
-    };
-    std::sort(pts.begin(), pts.end(), lessXY);
-    std::vector<Vector2> filtered;
-    filtered.reserve(pts.size());
-    for(auto &p: pts){
-        if(filtered.empty() || !ApproxEqPt(filtered.back(), p)) filtered.push_back(p);
-    }
-    pts.swap(filtered);
-    if(pts.size()<=2) return pts;
-
-    std::vector<Vector2> H;
-    for(auto &p: pts){
-        while(H.size()>=2 && crossXZ(H[H.size()-2], H.back(), p) <= 0) H.pop_back();
-        H.push_back(p);
-    }
-    size_t t = H.size()+1;
-    for(int i=(int)pts.size()-2; i>=0; --i){
-        Vector2 p = pts[i];
-        while(H.size()>=t && crossXZ(H[H.size()-2], H.back(), p) <= 0) H.pop_back();
-        H.push_back(p);
-    }
-    if(!H.empty()) H.pop_back();
-    if(SignedArea(H) < 0) std::reverse(H.begin(), H.end());
-    RemoveCollinear(H);
-    return H;
-}
-
-
-static std::vector<Vector2> UnionConvexPolygonsOne(const std::vector<Vector2>& A, const std::vector<Vector2>& B)
-{
+static std::vector<std::vector<Vector2>> UnionGH(const std::vector<Vector2>& A, const std::vector<Vector2>& B){
     if(A.size()<3 && B.size()<3) return {};
-    if(A.size()<3) return B;
-    if(B.size()<3) return A;
+    if(A.size()<3) return {B};
+    if(B.size()<3) return {A};
 
-    std::vector<Vector2> P = A, Q = B;
-    EnsureCCW(P); RemoveCollinear(P);
-    EnsureCCW(Q); RemoveCollinear(Q);
+    bool AinB = PointInPoly(B, A[0]);
+    bool BinA = PointInPoly(A, B[0]);
 
-    if(!IsConvexCCW(P) || !IsConvexCCW(Q)){
-        std::vector<Vector2> all = P; all.insert(all.end(), Q.begin(), Q.end());
-        return ConvexHull(std::move(all));
+    float eps=1e-6f;
+    GHNode* a = MakeCycle(A,0);
+    GHNode* b = MakeCycle(B,1);
+    Intersections(a,b);
+
+    bool hasInter=false;
+    {
+        std::vector<GHNode*> tmp; 
+        CollectNodes(a,tmp);
+
+        for(auto* n:tmp) if(n->isInter){ hasInter=true; break; }
+
+        if(!hasInter){
+            if(AinB && !BinA){ FreeCycle(a); FreeCycle(b); return {B}; }
+            if(BinA && !AinB){ FreeCycle(a); FreeCycle(b); return {A}; }
+            std::vector<std::vector<Vector2>> r; 
+            
+            r.push_back(A); r.push_back(B); FreeCycle(a); FreeCycle(b); 
+            return r;
+        }
     }
-
-    if(PointInConvex(P, Q[0]) && PointInConvex(P, Q[Q.size()/2])) return P;
-    if(PointInConvex(Q, P[0]) && PointInConvex(Q, P[P.size()/2])) return Q;
-
-    std::vector<Edge> segP = SubdivideByIntersections(P, Q);
-    std::vector<Edge> segQ = SubdivideByIntersections(Q, P);
-
-    std::vector<Edge> boundary; boundary.reserve(segP.size()+segQ.size());
-    for(auto&e: segP) if(!MidpointInside(Q, e)) boundary.push_back(e);
-    for(auto&e: segQ) if(!MidpointInside(P, e)) boundary.push_back(e);
-
-    auto cycles = BuildCycles(boundary);
-
-    if(cycles.empty()){
-        std::vector<Vector2> all = P; all.insert(all.end(), Q.begin(), Q.end());
-        return ConvexHull(std::move(all));
+    MarkEntry(a,b);
+    std::vector<std::vector<Vector2>> R = Traverse(a);
+    if(R.empty()){
+        if(AinB) R.push_back(B);
+        else if(BinA) R.push_back(A);
+        else { R.push_back(A); R.push_back(B); }
     }
-
-    if(cycles.size()==1){
-        return cycles[0];
-    }
-
-    
-    std::vector<Vector2> allPts;
-    for(auto &c : cycles) allPts.insert(allPts.end(), c.begin(), c.end());
-    
-    allPts.insert(allPts.end(), P.begin(), P.end());
-    allPts.insert(allPts.end(), Q.begin(), Q.end());
-    return ConvexHull(std::move(allPts));
+    FreeCycle(a);
+    FreeCycle(b);
+    return R;
 }
 
-// ------------------- main -------------------
-enum class Mode { DRAW_A, DRAW_B, IDLE };
+static void DrawPolyline(const std::vector<Vector2>& pts, bool closed, Color c, float thick){
+    for(size_t i=0;i+1<pts.size();++i) DrawLineEx(pts[i],pts[i+1],thick,c);
+    if(closed && pts.size()>=3) DrawLineEx(pts.back(),pts.front(),thick,c);
+    for(auto& p:pts) DrawCircleV(p,4,c);
+}
 
 int main(){
-    InitWindow(WINDOW_WIDTH, WINDOW_HIGHT, "UNION OF CONVEX POLYGONS");
+    SetConfigFlags(FLAG_MSAA_4X_HINT);
+    InitWindow(1200, 800, "POLYGON UNION");
     SetTargetFPS(60);
-
-    Rectangle panel  = {0,0, (float)DRAW_BOX_WIDTH, (float)DRAW_BOX_HIGHT};
-    Rectangle canvas = {1,1, (float)DRAW_BOX_WIDTH-2, (float)DRAW_BOX_HIGHT-2};
-
-    Image    canvasImage   = GenImageColor((int)canvas.width, (int)canvas.height, WHITE);
-    Texture2D canvasTexture = LoadTextureFromImage(canvasImage);
-
+    GuiLoadStyleDefault();
+    int panelW=320;
+    Rectangle canvas = {20,20,(float)(GetScreenWidth()-panelW-40), (float)(GetScreenHeight()-40)};
+    enum Mode {MODE_IDLE, MODE_BUILD_A, MODE_BUILD_B};
+    Mode mode=MODE_IDLE;
     std::vector<Vector2> polyA, polyB;
-    std::vector<Vector2> unionPoly; // ALWAYS ONE POLYGON
-    Mode mode = Mode::IDLE;
-
-    bool showMsg = false;
-    char msgText[512] = {0};
-
-    auto DrawGridToImage = [&](Image& img){
-        for(int x=0; x<canvas.width; x+=40){
-            for(int y=0; y<canvas.height; ++y)
-                ImageDrawPixel(&img, x, y, (Color){235,235,235,255});
-        }
-        for(int y=0; y<canvas.height; y+=40){
-            for(int x=0; x<canvas.width; ++x)
-                ImageDrawPixel(&img, x, y, (Color){235,235,235,255});
-        }
-    };
-
-    auto RedrawAll = [&](){
-        UnloadImage(canvasImage);
-        canvasImage = GenImageColor((int)canvas.width, (int)canvas.height, WHITE);
-        DrawGridToImage(canvasImage);
-
-        // If union exists — SHOW ONLY ONE GREEN POLYGON (as required)
-        if(!unionPoly.empty()){
-            FillPolygonScanline(&canvasImage, (Color){40,160,40,160}, unionPoly);
-            StrokePolygon(&canvasImage, DARKGREEN, unionPoly);
-        } else {
-            // Otherwise show inputs
-            if(polyA.size() >= 3){
-                std::vector<Vector2> tmp = polyA; EnsureCCW(tmp); RemoveCollinear(tmp);
-                FillPolygonScanline(&canvasImage, (Color){80,120,255,90}, tmp);
-                StrokePolygon(&canvasImage, BLUE, tmp);
-            } else {
-                for(auto &p : polyA)
-                    ImageDrawCircle(&canvasImage, (int)p.x, (int)p.y, 3, BLUE);
-            }
-
-            if(polyB.size() >= 3){
-                std::vector<Vector2> tmp = polyB; EnsureCCW(tmp); RemoveCollinear(tmp);
-                FillPolygonScanline(&canvasImage, (Color){255,160,60,90}, tmp);
-                StrokePolygon(&canvasImage, ORANGE, tmp);
-            } else {
-                for(auto &p : polyB)
-                    ImageDrawCircle(&canvasImage, (int)p.x, (int)p.y, 3, ORANGE);
-            }
-        }
-
-        UpdateTexture(canvasTexture, canvasImage.data);
-    };
-
-    RedrawAll();
+    std::vector<std::vector<Vector2>> unionPolys;
+    bool hadUnion=false;
 
     while(!WindowShouldClose()){
+        if(IsWindowResized()){
+            canvas = {20,20,(float)(GetScreenWidth()-panelW-40),(float)(GetScreenHeight()-40)};
+        }
+        Vector2 m = GetMousePosition();
+        bool inCanvas = CheckCollisionPointRec(m, canvas);
+        if(inCanvas && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)){
+            if(mode==MODE_BUILD_A){ polyA.push_back(m); hadUnion=false; unionPolys.clear(); }
+            else if(mode==MODE_BUILD_B){ polyB.push_back(m); hadUnion=false; unionPolys.clear(); }
+        }
+
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
-        const char* stateText = (mode==Mode::DRAW_A)? "POLYGON A MODE" :
-                                (mode==Mode::DRAW_B)? "POLYGON B MODE" :
-                                                      "CHOOSE AN OPTION:";
-        GuiLabel((Rectangle){ELEMENTS_X, PAD, ELEMENTS_W, ELEMENTS_H}, stateText);
+        DrawRectangleRec(canvas, Color{245,245,245,255});
+        DrawRectangleLinesEx(canvas,2,BLACK);
 
-        if(GuiButton((Rectangle){ELEMENTS_X, PAD*2+ELEMENTS_H*1, ELEMENTS_W, ELEMENTS_H}, "POLYGON A MODE")){
-            mode = Mode::DRAW_A;
-            unionPoly.clear();
-            RedrawAll();
-        }
-        if(GuiButton((Rectangle){ELEMENTS_X, PAD*3+ELEMENTS_H*2, ELEMENTS_W, ELEMENTS_H}, "POLYGON B MODE")){
-            mode = Mode::DRAW_B;
-            unionPoly.clear();
-            RedrawAll();
-        }
-        if(GuiButton((Rectangle){ELEMENTS_X, PAD*4+ELEMENTS_H*3, ELEMENTS_W, ELEMENTS_H}, "FINISH")){
-            std::vector<Vector2>* cur = (mode==Mode::DRAW_A? &polyA : (mode==Mode::DRAW_B? &polyB : nullptr));
-            if(cur && cur->size()>=3){
-                EnsureCCW(*cur);
-                RemoveCollinear(*cur);
-                if(!IsConvexCCW(*cur)){
-                    snprintf(msgText, sizeof(msgText), "INCORRECT POLYGON (MUST BE CONVEX CCW)");
-                    showMsg = true;
-                }
-                unionPoly.clear();
-                RedrawAll();
-            }
-        }
-        if(GuiButton((Rectangle){ELEMENTS_X, PAD*5+ELEMENTS_H*4, ELEMENTS_W, ELEMENTS_H}, "UNION POLYGONS")){
-            if(polyA.size()<3 || polyB.size()<3){
-                snprintf(msgText, sizeof(msgText), "ONE OF THE POLYGONS IS INCOMPLETE");
-                showMsg = true;
-            } else {
-                unionPoly = UnionConvexPolygonsOne(polyA, polyB);
-                RemoveCollinear(unionPoly);
-                EnsureCCW(unionPoly);
-                RedrawAll();
-                if(!unionPoly.empty())
-                    snprintf(msgText, sizeof(msgText), "UNION: ONE POLYGON. AREA: %.2f",
-                             std::fabs(SignedArea(unionPoly)));
-                else
-                    snprintf(msgText, sizeof(msgText), "UNION FAILED");
-                showMsg = true;
-            }
-        }
-        if(GuiButton((Rectangle){ELEMENTS_X, PAD*6+ELEMENTS_H*5, ELEMENTS_W, ELEMENTS_H}, "CLEAN")){
-            polyA.clear(); polyB.clear(); unionPoly.clear();
-            mode = Mode::IDLE;
-            RedrawAll();
-        }
+        if(!polyA.empty()) DrawPolyline(polyA, polyA.size()>=3, RED, 2.5f);
+        if(!polyB.empty()) DrawPolyline(polyB, polyB.size()>=3, BLUE, 2.5f);
 
-        // Add points
-        Vector2 mp = GetMousePosition();
-        if(CheckCollisionPointRec(mp, panel)){
-            Vector2 inner = { mp.x - panel.x, mp.y - panel.y };
-            if(IsMouseButtonPressed(MOUSE_LEFT_BUTTON)){
-                if(mode==Mode::DRAW_A){
-                    polyA.push_back(inner); unionPoly.clear(); RedrawAll();
-                } else if(mode==Mode::DRAW_B){
-                    polyB.push_back(inner); unionPoly.clear(); RedrawAll();
-                }
-            }
-            if(IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)){
-                std::vector<Vector2>* cur = (mode==Mode::DRAW_A? &polyA : (mode==Mode::DRAW_B? &polyB : nullptr));
-                if(cur && cur->size()>=3){
-                    EnsureCCW(*cur);
-                    RemoveCollinear(*cur);
-                    if(!IsConvexCCW(*cur)){
-                        snprintf(msgText, sizeof(msgText), "INCORRECT POLYGON (MUST BE CONVEX CCW)");
-                        showMsg = true;
-                    }
-                    unionPoly.clear();
-                    RedrawAll();
-                }
+        if(hadUnion){
+            for(auto& up: unionPolys){
+                DrawPolyline(up, true, GREEN, 4.0f);
             }
         }
 
-        GuiPanel(panel, NULL);
-        DrawTexture(canvasTexture, (int)panel.x, (int)panel.y, WHITE);
-
-        if(showMsg){
-            int r = GuiMessageBox((Rectangle){WINDOW_WIDTH/2-200, WINDOW_HIGHT/2-100, 400, 200},
-                                  "RESULT", msgText, "OK");
-            if(r >= 0) showMsg = false;
+        DrawRectangle(GetScreenWidth()-panelW,0,panelW,GetScreenHeight(),Color{235,235,235,255});
+        Rectangle r = { (float)GetScreenWidth()-panelW+20, 20, (float)panelW-40, 52 };
+        if(GuiButton(r, "BUILD POLYGON A")){
+            mode = MODE_BUILD_A;
         }
+        r.y += 64;
+        if(GuiButton(r, "BUILD POLYGON B")){
+            mode = MODE_BUILD_B;
+        }
+        r.y += 64;
+        if(GuiButton(r, "UNION")){
+            unionPolys = UnionGH(polyA,polyB);
+            hadUnion=true;
+            mode=MODE_IDLE;
+        }
+        r.y += 64;
+        if(GuiButton(r, "CLEAR")){
+            polyA.clear();
+            polyB.clear();
+            unionPolys.clear();
+            hadUnion=false;
+            mode=MODE_IDLE;
+        }
+        r.y += 64;
+        Rectangle lab = r; lab.height=40;
+        const char* status = "MODE: IDLE";
+        if(mode==MODE_BUILD_A) status="MODE: BUILD A";
+        else if(mode==MODE_BUILD_B) status="MODE: BUILD B";
+        GuiLabel(lab, status);
 
         EndDrawing();
     }
-
-    UnloadTexture(canvasTexture);
-    UnloadImage(canvasImage);
     CloseWindow();
     return 0;
 }
