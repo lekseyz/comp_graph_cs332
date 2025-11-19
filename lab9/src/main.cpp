@@ -117,16 +117,155 @@ Mesh LoadMeshFromOBJ(const char* fileName) {
     return mesh;
 }
 
+Mesh GenTexturedTetrahedron(void) {
+    Mesh mesh = { 0 };
+
+    Vector3 baseVerts[4] = {
+        { 1.0f,  1.0f,  1.0f },
+        { -1.0f, -1.0f,  1.0f },
+        { -1.0f,  1.0f, -1.0f },
+        { 1.0f, -1.0f, -1.0f }
+    };
+
+    int faces[4][3] = {
+        { 0, 2, 1 },
+        { 0, 1, 3 },
+        { 0, 3, 2 },
+        { 1, 2, 3 }
+    };
+
+    float uvs[3][2] = {
+        { 0.0f, 0.0f },
+        { 1.0f, 0.0f },
+        { 0.5f, 1.0f }
+    };
+
+    mesh.triangleCount = 4;
+    mesh.vertexCount = mesh.triangleCount * 3;
+
+    mesh.vertices = (float*)malloc(mesh.vertexCount * 3 * sizeof(float));
+    mesh.texcoords = (float*)malloc(mesh.vertexCount * 2 * sizeof(float));
+    mesh.normals = (float*)malloc(mesh.vertexCount * 3 * sizeof(float));
+    mesh.indices = (unsigned short*)malloc(mesh.triangleCount * 3 * sizeof(unsigned short));
+
+    for (int f = 0; f < 4; f++) {
+        Vector3 p0 = baseVerts[faces[f][0]];
+        Vector3 p1 = baseVerts[faces[f][1]];
+        Vector3 p2 = baseVerts[faces[f][2]];
+
+        Vector3 edge1 = Vector3Subtract(p1, p0);
+        Vector3 edge2 = Vector3Subtract(p2, p0);
+        Vector3 normal = Vector3Normalize(Vector3CrossProduct(edge1, edge2));
+
+        for (int v = 0; v < 3; v++) {
+            int dst = f * 3 + v;
+            Vector3 p = baseVerts[faces[f][v]];
+
+            mesh.vertices[dst * 3 + 0] = p.x;
+            mesh.vertices[dst * 3 + 1] = p.y;
+            mesh.vertices[dst * 3 + 2] = p.z;
+
+            mesh.normals[dst * 3 + 0] = normal.x;
+            mesh.normals[dst * 3 + 1] = normal.y;
+            mesh.normals[dst * 3 + 2] = normal.z;
+
+            mesh.texcoords[dst * 2 + 0] = uvs[v][0];
+            mesh.texcoords[dst * 2 + 1] = uvs[v][1];
+
+            mesh.indices[dst] = (unsigned short)dst;
+        }
+    }
+
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
+Mesh GenTexturedCube(void) {
+    Mesh mesh = GenMeshCube(2.0f, 2.0f, 2.0f);
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
+Mesh GenTexturedOctahedron(void) {
+    Mesh mesh = { 0 };
+
+    Vector3 baseVerts[6] = {
+        { 1.0f, 0.0f, 0.0f },
+        { -1.0f, 0.0f, 0.0f },
+        { 0.0f, 1.0f, 0.0f },
+        { 0.0f, -1.0f, 0.0f },
+        { 0.0f, 0.0f, 1.0f },
+        { 0.0f, 0.0f, -1.0f }
+    };
+
+    int faces[8][3] = {
+        { 2, 4, 0 },
+        { 2, 1, 4 },
+        { 2, 5, 1 },
+        { 2, 0, 5 },
+        { 3, 0, 4 },
+        { 3, 4, 1 },
+        { 3, 1, 5 },
+        { 3, 5, 0 }
+    };
+
+    float uvs[3][2] = {
+        { 0.0f, 0.0f },
+        { 1.0f, 0.0f },
+        { 0.5f, 1.0f }
+    };
+
+    mesh.triangleCount = 8;
+    mesh.vertexCount = mesh.triangleCount * 3;
+
+    mesh.vertices = (float*)malloc(mesh.vertexCount * 3 * sizeof(float));
+    mesh.texcoords = (float*)malloc(mesh.vertexCount * 2 * sizeof(float));
+    mesh.normals = (float*)malloc(mesh.vertexCount * 3 * sizeof(float));
+    mesh.indices = (unsigned short*)malloc(mesh.triangleCount * 3 * sizeof(unsigned short));
+
+    for (int f = 0; f < 8; f++) {
+        Vector3 p0 = baseVerts[faces[f][0]];
+        Vector3 p1 = baseVerts[faces[f][1]];
+        Vector3 p2 = baseVerts[faces[f][2]];
+
+        Vector3 edge1 = Vector3Subtract(p1, p0);
+        Vector3 edge2 = Vector3Subtract(p2, p0);
+        Vector3 normal = Vector3Normalize(Vector3CrossProduct(edge1, edge2));
+
+        for (int v = 0; v < 3; v++) {
+            int dst = f * 3 + v;
+            Vector3 p = baseVerts[faces[f][v]];
+
+            mesh.vertices[dst * 3 + 0] = p.x;
+            mesh.vertices[dst * 3 + 1] = p.y;
+            mesh.vertices[dst * 3 + 2] = p.z;
+
+            mesh.normals[dst * 3 + 0] = normal.x;
+            mesh.normals[dst * 3 + 1] = normal.y;
+            mesh.normals[dst * 3 + 2] = normal.z;
+
+            mesh.texcoords[dst * 2 + 0] = uvs[v][0];
+            mesh.texcoords[dst * 2 + 1] = uvs[v][1];
+
+            mesh.indices[dst] = (unsigned short)dst;
+        }
+    }
+
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 int main(void) {
     const int screenWidth = 1200;
     const int screenHeight = 800;
 
     InitWindow(screenWidth, screenHeight, "3D Lighting: Gouraud vs Phong Toon Shading");
+    rlEnableBackfaceCulling();
 
     Camera camera = { 0 };
     camera.position = (Vector3){ 5.0f, 5.0f, 5.0f };
-    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
-    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    camera.target = (Vector3){ 0.0f,  0.0f,  0.0f };
+    camera.up = (Vector3){ 0.0f,  1.0f,  0.0f };
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
@@ -134,6 +273,15 @@ int main(void) {
 
     Model models[10];
     int modelCount = 0;
+
+    Mesh tetraMesh = GenTexturedTetrahedron();
+    models[modelCount++] = LoadModelFromMesh(tetraMesh);
+
+    Mesh cubeMesh = GenTexturedCube();
+    models[modelCount++] = LoadModelFromMesh(cubeMesh);
+
+    Mesh octaMesh = GenTexturedOctahedron();
+    models[modelCount++] = LoadModelFromMesh(octaMesh);
 
     if (DirectoryExists("models")) {
         FilePathList files = LoadDirectoryFilesEx("models", ".obj", false);
@@ -158,11 +306,13 @@ int main(void) {
         "#version 330\n"
         "in vec3 vertexPosition;\n"
         "in vec3 vertexNormal;\n"
+        "in vec2 vertexTexCoord;\n"
         "uniform mat4 mvp;\n"
         "uniform mat4 matModel;\n"
         "uniform vec3 lightPos;\n"
         "uniform vec3 viewPos;\n"
         "out vec3 fragColor;\n"
+        "out vec2 fragTexCoord;\n"
         "void main() {\n"
         "    gl_Position = mvp * vec4(vertexPosition, 1.0);\n"
         "    vec3 worldPos = (matModel * vec4(vertexPosition, 1.0)).xyz;\n"
@@ -172,52 +322,61 @@ int main(void) {
         "    vec3 ambient = vec3(0.2);\n"
         "    vec3 diffuse = vec3(0.8, 0.2, 0.2) * diff;\n"
         "    fragColor = ambient + diffuse;\n"
+        "    fragTexCoord = vertexTexCoord;\n"
         "}\n";
 
     const char* gouraudFS =
         "#version 330\n"
         "in vec3 fragColor;\n"
+        "in vec2 fragTexCoord;\n"
+        "uniform sampler2D texture0;\n"
         "out vec4 finalColor;\n"
         "void main() {\n"
-        "    finalColor = vec4(fragColor, 1.0);\n"
+        "    vec4 texColor = texture(texture0, fragTexCoord);\n"
+        "    if (texColor.a <= 0.0) discard;\n"
+        "    finalColor = vec4(fragColor, 1.0) * texColor;\n"
         "}\n";
 
     const char* phongToonVS =
         "#version 330\n"
         "in vec3 vertexPosition;\n"
         "in vec3 vertexNormal;\n"
+        "in vec2 vertexTexCoord;\n"
         "uniform mat4 mvp;\n"
         "uniform mat4 matModel;\n"
         "out vec3 fragPos;\n"
         "out vec3 fragNormal;\n"
+        "out vec2 fragTexCoord;\n"
         "void main() {\n"
         "    gl_Position = mvp * vec4(vertexPosition, 1.0);\n"
         "    fragPos = (matModel * vec4(vertexPosition, 1.0)).xyz;\n"
         "    fragNormal = mat3(matModel) * vertexNormal;\n"
+        "    fragTexCoord = vertexTexCoord;\n"
         "}\n";
 
     const char* phongToonFS =
         "#version 330\n"
         "in vec3 fragPos;\n"
         "in vec3 fragNormal;\n"
+        "in vec2 fragTexCoord;\n"
         "uniform vec3 lightPos;\n"
         "uniform vec3 viewPos;\n"
+        "uniform sampler2D texture0;\n"
         "out vec4 finalColor;\n"
         "void main() {\n"
         "    vec3 normal = normalize(fragNormal);\n"
         "    vec3 lightDir = normalize(lightPos - fragPos);\n"
         "    float diff = max(dot(normal, lightDir), 0.0);\n"
-        "    \n"
         "    vec3 color;\n"
         "    if (diff < 0.3) color = vec3(0.2, 0.1, 0.5);\n"
         "    else if (diff < 0.6) color = vec3(0.4, 0.2, 0.7);\n"
         "    else color = vec3(0.6, 0.4, 0.9);\n"
-        "    \n"
         "    vec3 viewDir = normalize(viewPos - fragPos);\n"
         "    float edge = max(dot(viewDir, normal), 0.0);\n"
         "    if (edge < 0.3) color = vec3(0.0);\n"
-        "    \n"
-        "    finalColor = vec4(color, 1.0);\n"
+        "    vec4 texColor = texture(texture0, fragTexCoord);\n"
+        "    if (texColor.a <= 0.0) discard;\n"
+        "    finalColor = vec4(color, 1.0) * texColor;\n"
         "}\n";
 
     Shader gouraudShader = LoadShaderFromMemory(gouraudVS, gouraudFS);
@@ -226,11 +385,13 @@ int main(void) {
     gouraudShader.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(gouraudShader, "mvp");
     gouraudShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(gouraudShader, "matModel");
     gouraudShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(gouraudShader, "viewPos");
+    gouraudShader.locs[SHADER_LOC_MAP_DIFFUSE] = GetShaderLocation(gouraudShader, "texture0");
     int gouraudLightLoc = GetShaderLocation(gouraudShader, "lightPos");
 
     phongToonShader.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(phongToonShader, "mvp");
     phongToonShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(phongToonShader, "matModel");
     phongToonShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(phongToonShader, "viewPos");
+    phongToonShader.locs[SHADER_LOC_MAP_DIFFUSE] = GetShaderLocation(phongToonShader, "texture0");
     int phongLightLoc = GetShaderLocation(phongToonShader, "lightPos");
 
     Vector3 lightPos = { 3.0f, 4.0f, 3.0f };
@@ -238,6 +399,14 @@ int main(void) {
     Mesh planeMesh = GenMeshPlane(20.0f, 20.0f, 1, 1);
     Model planeModel = LoadModelFromMesh(planeMesh);
     planeModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = (Color){ 80, 80, 80, 255 };
+
+    Texture2D texModel = LoadTexture("textures/uv.png");
+    Texture2D texGround = LoadTexture("textures/uv.png");
+
+    for (int i = 0; i < modelCount; i++) {
+        models[i].materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texModel;
+    }
+    //planeModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texGround;
 
     Vector3 modelPosition = { 0.0f, 1.0f, 0.0f };
     float modelRotation = 0.0f;
@@ -295,7 +464,7 @@ int main(void) {
 
         BeginMode3D(camera);
 
-        DrawModel(planeModel, (Vector3) { 0, -0.01f, 0 }, 1.0f, GRAY);
+        DrawModel(planeModel, (Vector3){ 0, -0.01f, 0 }, 1.0f, GRAY);
 
         Matrix transform = MatrixIdentity();
         transform = MatrixMultiply(transform, MatrixScale(modelScale, modelScale, modelScale));
@@ -333,6 +502,9 @@ int main(void) {
 
         EndDrawing();
     }
+
+    UnloadTexture(texModel);
+    UnloadTexture(texGround);
 
     UnloadShader(gouraudShader);
     UnloadShader(phongToonShader);
