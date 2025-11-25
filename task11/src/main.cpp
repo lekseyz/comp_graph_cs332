@@ -24,6 +24,23 @@ static const char* fsGradient =
 "    finalColor = fragColor;\n"
 "}\n";
 
+static const char* vsFlat =
+"#version 330\n"
+"layout(location = 0) in vec3 vertexPosition;\n"
+"void main()\n"
+"{\n"
+"    gl_Position = vec4(vertexPosition, 1.0);\n"
+"}\n";
+
+static const char* fsFlat =
+"#version 330\n"
+"uniform vec4 solidColor;\n"
+"out vec4 finalColor;\n"
+"void main()\n"
+"{\n"
+"    finalColor = solidColor;\n"
+"}\n";
+
 int main(void)
 {
     const int screenWidth = 600;
@@ -38,6 +55,12 @@ int main(void)
     RenderTexture2D target = LoadRenderTexture(600, 600);
 
     Shader shGradient = LoadShaderFromMemory(vsGradient, fsGradient);
+    Shader shFlat = LoadShaderFromMemory(vsFlat, fsFlat);
+
+    int solidColorLoc = GetShaderLocation(shFlat, "solidColor");
+    Color quadColor = RED;
+    Color fanColor = GREEN;
+    Color pentColor = BLUE;
 
     Mesh quadMesh = { 0 };
     quadMesh.triangleCount = 2;
@@ -144,23 +167,50 @@ int main(void)
     Material matPentGrad = LoadMaterialDefault();
     matPentGrad.shader = shGradient;
 
+    Material matQuadFlat = LoadMaterialDefault();
+    matQuadFlat.shader = shFlat;
+    Material matFanFlat = LoadMaterialDefault();
+    matFanFlat.shader = shFlat;
+    Material matPentFlat = LoadMaterialDefault();
+    matPentFlat.shader = shFlat;
+
     Rectangle canvasSource = (Rectangle){ 0, 0, (float)target.texture.width, -(float)target.texture.height };
     Rectangle canvasDest = (Rectangle){ 0, 0, 600, 600 };
 
     int currentShape = 0;
+    int coloringMode = 0;
 
     while (!WindowShouldClose())
     {
         if (IsKeyPressed(KEY_ONE)) currentShape = 0;
         if (IsKeyPressed(KEY_TWO)) currentShape = 1;
         if (IsKeyPressed(KEY_THREE)) currentShape = 2;
+        if (IsKeyPressed(KEY_C)) coloringMode = (coloringMode + 1) % 2;
 
         BeginTextureMode(target);
         ClearBackground((Color) { 30, 30, 30, 255 });
 
-        if (currentShape == 0) DrawMesh(quadMesh, matQuadGrad, MatrixIdentity());
-        else if (currentShape == 1) DrawMesh(fanMesh, matFanGrad, MatrixIdentity());
-        else DrawMesh(pentMesh, matPentGrad, MatrixIdentity());
+        if (coloringMode == 1) // Flat coloring
+        {
+            if (currentShape == 0) {
+                SetShaderValue(shFlat, solidColorLoc, (float[4]){ quadColor.r/255.0f, quadColor.g/255.0f, quadColor.b/255.0f, quadColor.a/255.0f }, SHADER_UNIFORM_VEC4);
+                DrawMesh(quadMesh, matQuadFlat, MatrixIdentity());
+            }
+            else if (currentShape == 1) {
+                SetShaderValue(shFlat, solidColorLoc, (float[4]){ fanColor.r/255.0f, fanColor.g/255.0f, fanColor.b/255.0f, fanColor.a/255.0f }, SHADER_UNIFORM_VEC4);
+                DrawMesh(fanMesh, matFanFlat, MatrixIdentity());
+            }
+            else {
+                SetShaderValue(shFlat, solidColorLoc, (float[4]){ pentColor.r/255.0f, pentColor.g/255.0f, pentColor.b/255.0f, pentColor.a/255.0f }, SHADER_UNIFORM_VEC4);
+                DrawMesh(pentMesh, matPentFlat, MatrixIdentity());
+            }
+        }
+        else // Gradient coloring
+        {
+            if (currentShape == 0) DrawMesh(quadMesh, matQuadGrad, MatrixIdentity());
+            else if (currentShape == 1) DrawMesh(fanMesh, matFanGrad, MatrixIdentity());
+            else DrawMesh(pentMesh, matPentGrad, MatrixIdentity());
+        }
 
         EndTextureMode();
 
@@ -172,7 +222,9 @@ int main(void)
         DrawTexturePro(target.texture, canvasSource, canvasDest, (Vector2) { 0, 0 }, 0.0f, WHITE);
 
         DrawText("1 - Quad | 2 - Fan | 3 - Pentagon", 10, 10, 20, BLACK);
-        DrawText("GRADIENT COLORING - Press 1, 2, or 3", 10, 570, 20, DARKGREEN);
+        const char* coloringText = (coloringMode == 0) ? "GRADIENT" : "FLAT";
+        DrawText(TextFormat("C - Coloring: %s", coloringText), 10, 40, 20, BLACK);
+        DrawText("Press 1, 2, or 3 to change shape", 10, 570, 20, DARKGREEN);
 
         EndDrawing();
     }
@@ -193,8 +245,12 @@ int main(void)
     UnloadMaterial(matQuadGrad);
     UnloadMaterial(matFanGrad);
     UnloadMaterial(matPentGrad);
+    UnloadMaterial(matQuadFlat);
+    UnloadMaterial(matFanFlat);
+    UnloadMaterial(matPentFlat);
 
     UnloadShader(shGradient);
+    UnloadShader(shFlat);
 
     CloseWindow();
 
