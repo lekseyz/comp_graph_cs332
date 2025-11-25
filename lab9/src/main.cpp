@@ -302,7 +302,7 @@ int main(void) {
     }
 
     int currentModelIndex = 0;
-
+    //гуро
     const char* gouraudVS =
         "#version 330\n"
         "in vec3 vertexPosition;\n"
@@ -337,7 +337,7 @@ int main(void) {
         "    if (texColor.a <= 0.0) discard;\n"
         "    finalColor = vec4(fragColor, 1.0) * texColor;\n"
         "}\n";
-
+    //фонг
     const char* phongToonVS =
         "#version 330\n"
         "in vec3 vertexPosition;\n"
