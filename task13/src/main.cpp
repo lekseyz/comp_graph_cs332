@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <map>
 #include <cmath>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -39,6 +40,7 @@ out vec4 finalColor;
 void main() {
     vec3 lightDir = normalize(vec3(1.0, 2.0, 3.0));
     float diff = max(dot(fragNormal, lightDir), 0.2);
+    
     vec4 texColor = texture(texture0, fragTexCoord);
     finalColor = vec4(texColor.rgb * diff, texColor.a);
 }
@@ -53,58 +55,111 @@ struct Planet {
     Vector3 axis;
 };
 
+Texture2D LoadTextureForModel(const fs::path& modelPath, const Texture2D& defaultTexture) {
+    fs::path basePath = modelPath;
+    basePath.replace_extension();
+
+    std::vector<std::string> textureExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".tga" };
+
+    for (const auto& ext : textureExtensions) {
+        fs::path texturePath = basePath;
+        texturePath.replace_extension(ext);
+
+        if (fs::exists(texturePath)) {
+            std::cout << "[INFO] Texture found: " << texturePath.string() << std::endl;
+            return LoadTexture(texturePath.string().c_str());
+        }
+    }
+    return defaultTexture;
+}
+
 int main() {
     const int screenWidth = 1280;
     const int screenHeight = 720;
 
-    InitWindow(screenWidth, screenHeight, "Solar System - Shader Instancing");
+    SetConfigFlags(FLAG_MSAA_4X_HINT);
+    InitWindow(screenWidth, screenHeight, "Solar System - Auto Loading");
 
     Camera3D camera = { 0 };
-    camera.position = (Vector3){ 0.0f, 30.0f, 30.0f };
+    camera.position = (Vector3){ 0.0f, 60.0f, 60.0f };
     camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
     Shader shader = LoadShaderFromMemory(instancingVs, instancingFs);
-    int loc = GetShaderLocation(shader, "instanceTransform");
-    
+    shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocationAttrib(shader, "instanceTransform");
+
     std::vector<Model> models;
-    std::string modelsDir = "models";
-    
+    std::vector<Texture2D> textures;
+
     Image checkedImg = GenImageChecked(512, 512, 32, 32, PURPLE, BLACK);
     Texture2D defaultTexture = LoadTextureFromImage(checkedImg);
     UnloadImage(checkedImg);
 
-    if (fs::exists(modelsDir) && fs::is_directory(modelsDir)) {
-        for (const auto& entry : fs::directory_iterator(modelsDir)) {
-            if (entry.path().extension() == ".obj") {
-                Model model = LoadModel(entry.path().string().c_str());
-                model.materials[0].shader = shader;
-                model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = defaultTexture;
-                models.push_back(model);
+    std::string modelsDirName = "models";
+    std::cout << "SCANNING FOLDER: " << modelsDirName << std::endl;
+
+    if (fs::exists(modelsDirName) && fs::is_directory(modelsDirName)) {
+        for (const auto& entry : fs::directory_iterator(modelsDirName)) {
+            fs::path filePath = entry.path();
+
+            std::string ext = filePath.extension().string();
+            if (ext == ".obj" || ext == ".OBJ") {
+
+                std::cout << "[LOADING] Found: " << filePath.filename().string() << " ... ";
+
+                Model model = LoadModel(filePath.string().c_str());
+
+                if (model.meshCount > 0) {
+                    model.materials[0].shader = shader;
+
+                    Texture2D tex = LoadTextureForModel(filePath, defaultTexture);
+                    model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = tex;
+
+                    models.push_back(model);
+
+                    if (tex.id != defaultTexture.id) textures.push_back(tex);
+
+                    std::cout << "SUCCESS!" << std::endl;
+                }
+                else {
+                    std::cout << "FAILED (Empty mesh)" << std::endl;
+                }
             }
         }
     }
+    else {
+        std::cout << "[ERROR] Folder 'models' not found!" << std::endl;
+        std::cout << "Make sure you created 'models' folder next to the executable." << std::endl;
+    }
 
     if (models.empty()) {
-        Model fallback = LoadModelFromMesh(GenMeshKnot(1.0f, 3.0f, 64, 128));
+        std::cout << "\n[WARN] No models found! Using fallback Cube." << std::endl;
+        Model fallback = LoadModelFromMesh(GenMeshCube(2.0f, 2.0f, 2.0f));
         fallback.materials[0].shader = shader;
         fallback.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = defaultTexture;
         models.push_back(fallback);
     }
 
     std::vector<Planet> solarSystem;
-    int systemSize = 50;
+    int systemSize = 100;
 
     for (int i = 0; i < systemSize; i++) {
         Planet p;
         p.modelIndex = GetRandomValue(0, (int)models.size() - 1);
-        p.distance = (i == 0) ? 0.0f : (float)(i * 2 + GetRandomValue(2, 5));
-        p.orbitSpeed = (i == 0) ? 0.0f : (1.0f / p.distance) * 5.0f;
-        p.rotationSpeed = (float)GetRandomValue(1, 10) / 10.0f;
-        p.scale = (i == 0) ? 4.0f : (float)GetRandomValue(5, 12) / 10.0f;
-        p.axis = Vector3Normalize((Vector3){(float)GetRandomValue(-10, 10), (float)GetRandomValue(-10, 10), (float)GetRandomValue(-10, 10)});
+
+        p.distance = (i == 0) ? 0.0f : (float)(i * 1.5f + 5.0f);
+        p.orbitSpeed = (i == 0) ? 0.0f : (1.0f / (p.distance + 1.0f)) * 15.0f;
+        p.rotationSpeed = (float)GetRandomValue(1, 30) / 10.0f;
+        p.scale = (i == 0) ? 3.0f : (float)GetRandomValue(5, 15) / 10.0f;
+
+        p.axis = Vector3Normalize((Vector3) {
+            (float)GetRandomValue(-10, 10),
+                (float)GetRandomValue(-10, 10),
+                (float)GetRandomValue(-10, 10)
+        });
+
         solarSystem.push_back(p);
     }
 
@@ -118,18 +173,16 @@ int main() {
         std::map<int, std::vector<Matrix>> instances;
 
         for (const auto& planet : solarSystem) {
-            float x = cosf(time * planet.orbitSpeed) * planet.distance;
-            float z = sinf(time * planet.orbitSpeed) * planet.distance;
-            
-            Vector3 position = { x, 0.0f, z };
-            if (planet.distance == 0.0f) position = Vector3Zero();
+            float angle = time * planet.orbitSpeed;
+            float x = cosf(angle) * planet.distance;
+            float z = sinf(angle) * planet.distance;
 
             Matrix matScale = MatrixScale(planet.scale, planet.scale, planet.scale);
             Matrix matRot = MatrixRotate(planet.axis, time * planet.rotationSpeed);
-            Matrix matTrans = MatrixTranslate(position.x, position.y, position.z);
-            
+            Matrix matTrans = MatrixTranslate(x, 0.0f, z);
+
             Matrix transform = MatrixMultiply(MatrixMultiply(matScale, matRot), matTrans);
-            
+
             instances[planet.modelIndex].push_back(transform);
         }
 
@@ -137,24 +190,32 @@ int main() {
         ClearBackground(DARKBLUE);
 
         BeginMode3D(camera);
+        DrawGrid(100, 5.0f);
 
         for (auto const& [modelIdx, transforms] : instances) {
             if (!transforms.empty()) {
-                DrawMeshInstanced(models[modelIdx].meshes[0], models[modelIdx].materials[0], transforms.data(), (int)transforms.size());
+                DrawMeshInstanced(
+                    models[modelIdx].meshes[0],
+                    models[modelIdx].materials[0],
+                    transforms.data(),
+                    (int)transforms.size()
+                );
             }
         }
-
-        DrawGrid(50, 2.0f);
-
         EndMode3D();
 
         DrawFPS(10, 10);
+        DrawText(TextFormat("Total Objects: %d", systemSize), 10, 40, 20, GREEN);
+        DrawText(TextFormat("Unique Models: %d", (int)models.size()), 10, 65, 20, GREEN);
+
         EndDrawing();
     }
 
     for (auto& model : models) UnloadModel(model);
+    for (auto& tex : textures) UnloadTexture(tex);
     UnloadTexture(defaultTexture);
     UnloadShader(shader);
+
     CloseWindow();
 
     return 0;
