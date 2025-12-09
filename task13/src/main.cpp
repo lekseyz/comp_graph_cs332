@@ -1,11 +1,13 @@
 #include "raylib.h"
 #include "raymath.h"
+#include "rlgl.h"
 #include <vector>
 #include <string>
 #include <filesystem>
 #include <map>
 #include <cmath>
 #include <iostream>
+#include "free_camera.h" // Include custom FreeCamera header
 
 namespace fs = std::filesystem;
 
@@ -74,21 +76,27 @@ Texture2D LoadTextureForModel(const fs::path& modelPath, const Texture2D& defaul
 }
 
 int main() {
-    const int screenWidth = 1280;
-    const int screenHeight = 720;
+    const int screenWidth = 800;
+    const int screenHeight = 450;
 
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(screenWidth, screenHeight, "Solar System - Auto Loading");
 
-    Camera3D camera = { 0 };
-    camera.position = (Vector3){ 0.0f, 60.0f, 60.0f };
-    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
-    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    camera.fovy = 45.0f;
-    camera.projection = CAMERA_PERSPECTIVE;
+    // Original Camera3D for orbital mode
+    Camera3D orbitalCamera = { 0 };
+    orbitalCamera.position = (Vector3){ 0.0f, 60.0f, 60.0f };
+    orbitalCamera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+    orbitalCamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    orbitalCamera.fovy = 45.0f;
+    orbitalCamera.projection = CAMERA_PERSPECTIVE;
+
+    // Custom FreeCamera for free-look mode
+    FreeCamera freeLookCamera(orbitalCamera.position, orbitalCamera.target, orbitalCamera.up, orbitalCamera.fovy);
+    bool useFreeCamera = false; // Start with orbital camera
 
     Shader shader = LoadShaderFromMemory(instancingVs, instancingFs);
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocationAttrib(shader, "instanceTransform");
+    int mvpLoc = GetShaderLocation(shader, "mvp");
 
     std::vector<Model> models;
     std::vector<Texture2D> textures;
@@ -166,7 +174,34 @@ int main() {
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
-        UpdateCamera(&camera, CAMERA_ORBITAL);
+        // Toggle camera mode
+        if (IsKeyPressed(KEY_C)) {
+            useFreeCamera = !useFreeCamera;
+            if (useFreeCamera) {
+                DisableCursor(); // Hide cursor for free-look
+                // When switching to free camera, set its position to orbital camera's current position
+                freeLookCamera.SetPosition(orbitalCamera.position);
+                freeLookCamera.SetTarget(orbitalCamera.target); // This will update pitch/yaw
+            } else {
+                EnableCursor(); // Show cursor for orbital
+                // When switching to orbital camera, set its position to free camera's current position
+                orbitalCamera.position = freeLookCamera.GetCamera3D().position;
+                orbitalCamera.target = freeLookCamera.GetCamera3D().target;
+            }
+        }
+
+        if (useFreeCamera) {
+            freeLookCamera.Update(GetFrameTime());
+        } else {
+            UpdateCamera(&orbitalCamera, CAMERA_ORBITAL);
+        }
+
+        Camera3D currentCamera = useFreeCamera ? freeLookCamera.GetCamera3D() : orbitalCamera;
+
+        Matrix view = MatrixLookAt(currentCamera.position, currentCamera.target, currentCamera.up);
+        float aspect = (float)screenWidth / (float)screenHeight;
+        Matrix projection = MatrixPerspective(currentCamera.fovy * DEG2RAD, aspect, 0.1f, 1000.0f);
+        Matrix viewProjection = MatrixMultiply(view, projection);
 
         float time = (float)GetTime();
 
@@ -188,22 +223,27 @@ int main() {
 
         BeginDrawing();
         ClearBackground(DARKBLUE);
+        
+        BeginMode3D(currentCamera);
+        {
+            DrawGrid(100, 5.0f);
 
-        BeginMode3D(camera);
-        DrawGrid(100, 5.0f);
+            SetShaderValueMatrix(shader, mvpLoc, viewProjection);
 
-        for (auto const& [modelIdx, transforms] : instances) {
-            if (!transforms.empty()) {
-                DrawMeshInstanced(
-                    models[modelIdx].meshes[0],
-                    models[modelIdx].materials[0],
-                    transforms.data(),
-                    (int)transforms.size()
-                );
+            for (auto const& [modelIdx, transforms] : instances) {
+                if (!transforms.empty()) {
+                    DrawMeshInstanced(
+                        models[modelIdx].meshes[0],
+                        models[modelIdx].materials[0],
+                        transforms.data(),
+                        (int)transforms.size()
+                    );
+                }
             }
         }
         EndMode3D();
-
+        
+        // 3. Draw 2D content
         DrawFPS(10, 10);
         DrawText(TextFormat("Total Objects: %d", systemSize), 10, 40, 20, GREEN);
         DrawText(TextFormat("Unique Models: %d", (int)models.size()), 10, 65, 20, GREEN);
