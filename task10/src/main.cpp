@@ -3,6 +3,7 @@
 
 int main() {
     InitWindow(600, 600, "Triangle");
+    
     Mesh mesh = { 0 };
 
     mesh.vertexCount   = 3;

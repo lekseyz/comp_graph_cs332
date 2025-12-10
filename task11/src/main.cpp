@@ -193,15 +193,18 @@ int main(void)
         if (coloringMode == 1) // Flat coloring
         {
             if (currentShape == 0) {
-                SetShaderValue(shFlat, solidColorLoc, (float[4]){ quadColor.r/255.0f, quadColor.g/255.0f, quadColor.b/255.0f, quadColor.a/255.0f }, SHADER_UNIFORM_VEC4);
+                const float value[4] = { quadColor.r/255.0f, quadColor.g/255.0f, quadColor.b/255.0f, quadColor.a/255.0f };
+                SetShaderValue(shFlat, solidColorLoc, value, SHADER_UNIFORM_VEC4);
                 DrawMesh(quadMesh, matQuadFlat, MatrixIdentity());
             }
             else if (currentShape == 1) {
-                SetShaderValue(shFlat, solidColorLoc, (float[4]){ fanColor.r/255.0f, fanColor.g/255.0f, fanColor.b/255.0f, fanColor.a/255.0f }, SHADER_UNIFORM_VEC4);
+                const float value[4] = { fanColor.r/255.0f, fanColor.g/255.0f, fanColor.b/255.0f, fanColor.a/255.0f };
+                SetShaderValue(shFlat, solidColorLoc, value, SHADER_UNIFORM_VEC4);
                 DrawMesh(fanMesh, matFanFlat, MatrixIdentity());
             }
             else {
-                SetShaderValue(shFlat, solidColorLoc, (float[4]){ pentColor.r/255.0f, pentColor.g/255.0f, pentColor.b/255.0f, pentColor.a/255.0f }, SHADER_UNIFORM_VEC4);
+                const float value[4] = { pentColor.r/255.0f, pentColor.g/255.0f, pentColor.b/255.0f, pentColor.a/255.0f };
+                SetShaderValue(shFlat, solidColorLoc, value, SHADER_UNIFORM_VEC4);
                 DrawMesh(pentMesh, matPentFlat, MatrixIdentity());
             }
         }

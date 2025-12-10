@@ -8,7 +8,6 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/System.hpp>
 
-// Function to read shader source code from a file
 std::string readShaderSource(const char* filePath) {
     std::ifstream shaderFile(filePath);
     if (!shaderFile.is_open()) {
@@ -21,7 +20,6 @@ std::string readShaderSource(const char* filePath) {
     return shaderStream.str();
 }
 
-// Function to compile a shader
 GLuint compileShader(const char* source, GLenum shaderType) {
     GLuint shader = glCreateShader(shaderType);
     glShaderSource(shader, 1, &source, NULL);
@@ -37,7 +35,6 @@ GLuint compileShader(const char* source, GLenum shaderType) {
     return shader;
 }
 
-// Function to create a shader program
 GLuint createShaderProgram(const char* vertexPath, const char* fragmentPath) {
     std::string vertexCode = readShaderSource(vertexPath);
     std::string fragmentCode = readShaderSource(fragmentPath);
@@ -67,7 +64,6 @@ GLuint createShaderProgram(const char* vertexPath, const char* fragmentPath) {
     return shaderProgram;
 }
 
-// Struct for RGB color
 struct RGB {
     float r, g, b;
 };
@@ -94,32 +90,27 @@ RGB hsvToRgb(float h, float s, float v) {
 }
 
 int main() {
-    // Create a window
     sf::ContextSettings settings;
     settings.depthBits = 24;
     settings.stencilBits = 8;
-    settings.antiAliasingLevel = 4;
+    settings.antialiasingLevel = 4;
     settings.majorVersion = 3;
     settings.minorVersion = 3;
 
-    sf::RenderWindow window(sf::VideoMode({800, 600}), "Gradient Circle", sf::State::Windowed, settings);
+    sf::RenderWindow window(sf::VideoMode({800, 600}), "Gradient Circle");
     window.setVerticalSyncEnabled(true);
 
-    // Initialize GLEW
     if (glewInit() != GLEW_OK) {
         std::cerr << "Failed to initialize GLEW" << std::endl;
         return -1;
     }
 
-    // Create shader program
     GLuint shaderProgram = createShaderProgram("shader.vs", "shader.fs");
 
-    // Generate circle vertices
     std::vector<float> vertices;
     const int numSegments = 360;
     const float radius = 0.5f;
 
-    // Center vertex (white)
     vertices.push_back(0.0f); vertices.push_back(0.0f); vertices.push_back(0.0f); // Position
     vertices.push_back(1.0f); vertices.push_back(1.0f); vertices.push_back(1.0f); // Color
 
@@ -127,13 +118,11 @@ int main() {
         float angle = i * (2.0f * M_PI / numSegments);
         float x = radius * cos(angle);
         float y = radius * sin(angle);
-
-        // Position
+        
         vertices.push_back(x);
         vertices.push_back(y);
         vertices.push_back(0.0f);
 
-        // Color (from HSV)
         RGB color = hsvToRgb(static_cast<float>(i) / numSegments, 1.0f, 1.0f);
         vertices.push_back(color.r);
         vertices.push_back(color.g);
@@ -150,23 +139,21 @@ int main() {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
 
-    // Position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    // Color attribute
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     float scaleX = 1.0f;
     float scaleY = 1.0f;
 
-    // Main loop
     while (window.isOpen()) {
-        while (const auto event = window.pollEvent()) {
-            if (event->is<sf::Event::Closed>()) {
+        sf::Event event;
+        if (window.pollEvent(event)) {
+            if (event.Closed)
                 window.close();
-            }
         }
+
 
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A))
             scaleX += 0.01f;
@@ -181,25 +168,19 @@ int main() {
         if (scaleY < 0.1f) scaleY = 0.1f;
 
 
-        // Clear the screen
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Use the shader program
         glUseProgram(shaderProgram);
 
-        // Update the scale uniform
         glUniform2f(glGetUniformLocation(shaderProgram, "scale"), scaleX, scaleY);
 
-        // Draw the circle
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLE_FAN, 0, numSegments + 2);
 
-        // Swap buffers
         window.display();
     }
 
-    // Cleanup
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteProgram(shaderProgram);
