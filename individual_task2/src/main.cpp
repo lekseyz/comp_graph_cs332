@@ -283,8 +283,7 @@ int main() {
 
         Color* pixels = (Color*)screenImg.data;
 
-        // OpenMP acceleration (Enable in compiler settings: -fopenmp)
-        #pragma omp parallel for schedule(dynamic)
+        //#pragma omp parallel for schedule(dynamic)
         for (int y = 0; y < RENDER_HEIGHT; y++) {
             for (int x = 0; x < RENDER_WIDTH; x++) {
                 float u = (float)x / RENDER_WIDTH;

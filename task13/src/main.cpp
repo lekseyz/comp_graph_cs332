@@ -90,9 +90,8 @@ int main() {
     orbitalCamera.fovy = 45.0f;
     orbitalCamera.projection = CAMERA_PERSPECTIVE;
 
-    // Custom FreeCamera for free-look mode
     FreeCamera freeLookCamera(orbitalCamera.position, orbitalCamera.target, orbitalCamera.up, orbitalCamera.fovy);
-    bool useFreeCamera = false; // Start with orbital camera
+    bool useFreeCamera = false; 
 
     Shader shader = LoadShaderFromMemory(instancingVs, instancingFs);
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocationAttrib(shader, "instanceTransform");
@@ -178,13 +177,11 @@ int main() {
         if (IsKeyPressed(KEY_C)) {
             useFreeCamera = !useFreeCamera;
             if (useFreeCamera) {
-                DisableCursor(); // Hide cursor for free-look
-                // When switching to free camera, set its position to orbital camera's current position
+                DisableCursor();
                 freeLookCamera.SetPosition(orbitalCamera.position);
-                freeLookCamera.SetTarget(orbitalCamera.target); // This will update pitch/yaw
+                freeLookCamera.SetTarget(orbitalCamera.target);
             } else {
-                EnableCursor(); // Show cursor for orbital
-                // When switching to orbital camera, set its position to free camera's current position
+                EnableCursor();
                 orbitalCamera.position = freeLookCamera.GetCamera3D().position;
                 orbitalCamera.target = freeLookCamera.GetCamera3D().target;
             }
@@ -243,7 +240,6 @@ int main() {
         }
         EndMode3D();
         
-        // 3. Draw 2D content
         DrawFPS(10, 10);
         DrawText(TextFormat("Total Objects: %d", systemSize), 10, 40, 20, GREEN);
         DrawText(TextFormat("Unique Models: %d", (int)models.size()), 10, 65, 20, GREEN);

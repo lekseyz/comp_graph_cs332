@@ -9,8 +9,8 @@ all: $(builddir)/main
 run: $(builddir)/main
 	$(builddir)/main ./langs/spiral.txt
 
-$(builddir)/main: $(workdir)/main.cpp $(builddir)
-	$(cc) $(workdir)/main.cpp -o $(builddir)/main $(cflags) $(lflags)
+$(builddir)/main: $(workdir)/main.cpp $(workdir)/free_camera.cpp $(builddir)
+	$(cc) $(workdir)/main.cpp $(workdir)/free_camera.cpp -o $(builddir)/main $(cflags) $(lflags)
 
 $(builddir):
 	mkdir -p $(builddir)
