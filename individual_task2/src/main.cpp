@@ -244,9 +244,9 @@ int main() {
     walls.push_back({{-15, -11-wallThick, -15}, { 15, -10, 15}, {WHITE, 0, 0, 1}}); // Floor
     walls.push_back({{-15, 10, -15}, { 15, 11+wallThick, 15}, {WHITE, 0, 0, 1}}); // Ceiling
 
-    spheres.push_back({{ -2.5f, -3.0f, 2.0f }, 2.0f, { BLUE, 0.0f, 0.0f, 1.5f }});
-    spheres.push_back({{ 2.5f, 2.0f, -2.0f }, 1.5f, { YELLOW, 0.0f, 0.0f, 1.5f }});
-    boxes.push_back({ { 1.5f, -5.0f, 1.0f }, { 4.5f, -2.0f, 4.0f }, { PURPLE, 0.0f, 0.0f, 1.5f } });
+    spheres.push_back({{ -2.5f, -3.0f, 2.0f }, 2.0f, { WHITE, 0.0f, 0.0f, 1.5f }});
+    spheres.push_back({{ 2.5f, 2.0f, -2.0f }, 1.5f, { WHITE, 0.0f, 0.0f, 1.5f }});
+    boxes.push_back({ { 1.5f, -5.0f, 1.0f }, { 4.5f, -2.0f, 4.0f }, { WHITE, 0.0f, 0.0f, 1.5f } });
     boxes.push_back({ { -4.0f, 0.0f, -4.0f }, { -2.0f, 2.0f, -2.0f }, { ORANGE, 0.0f, 0.0f, 1.5f } });
 
     lights.push_back({ { 0, 4.5f, 0 }, WHITE, 1.0f, true });
@@ -267,6 +267,11 @@ int main() {
         if (IsKeyDown(KEY_D)) lights[1].position.x += 0.2f;
         if (IsKeyDown(KEY_Q)) lights[1].position.z -= 0.2f;
         if (IsKeyDown(KEY_E)) lights[1].position.z += 0.2f;
+
+        if (IsKeyDown(KEY_LEFT)) spheres.front().position.x += 0.2f;
+        if (IsKeyDown(KEY_RIGHT)) spheres.front().position.x -= 0.2f;
+        if (IsKeyDown(KEY_UP)) spheres.front().position.y -= 0.2f;
+        if (IsKeyDown(KEY_DOWN)) spheres.front().position.y += 0.2f;
 
         for (int i = 0; i <= 6; i++) {
             if (IsKeyPressed(KEY_ZERO + i)) mirrorWallIndex = i;
