@@ -13,6 +13,12 @@ enum LightType {
     LIGHT_SPOT = 2
 };
 
+enum LightingModel {
+    PHONG = 0,
+    TOON = 1,
+    OREN_NAYAR = 2
+};
+
 struct LightSource {
     LightType type;
     Vector3 position;
@@ -33,6 +39,8 @@ struct SceneObject {
     Vector3 position;
     float scale;
     Color color;
+    int lightingModel;
+    std::string name;
 };
 
 void SetShaderLight(Shader shader, int index, LightSource light)
@@ -102,14 +110,19 @@ int main()
     int shininessLoc = GetShaderLocation(shader, "shininess");
     int specularStrengthLoc = GetShaderLocation(shader, "specularStrength");
     int lightsCountLoc = GetShaderLocation(shader, "lightsCount");
+    int lightingModelLoc = GetShaderLocation(shader, "lightingModel");
+    int roughnessLoc = GetShaderLocation(shader, "roughness");
+
 
     float ambient[3] = { 0.2f, 0.2f, 0.2f };
     float shininess = 32.0f;
     float specularStrength = 0.5f;
+    float roughness = 0.5f;
 
     SetShaderValue(shader, ambientLoc, ambient, SHADER_UNIFORM_VEC3);
     SetShaderValue(shader, shininessLoc, &shininess, SHADER_UNIFORM_FLOAT);
     SetShaderValue(shader, specularStrengthLoc, &specularStrength, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, roughnessLoc, &roughness, SHADER_UNIFORM_FLOAT);
 
     std::vector<LightSource> lights;
 
@@ -173,6 +186,8 @@ int main()
         obj.scale = scales[i];
         obj.color = WHITE;
         obj.model.transform = MatrixRotateX(rotates[i] * DEG2RAD);
+        obj.lightingModel = PHONG;
+        obj.name = modelNames[i];
         objects.push_back(obj);
     }
 
@@ -183,6 +198,7 @@ int main()
 
     int currentLight = 0;
     bool showHelp = true;
+    int currentObject = 0;
 
     while (!WindowShouldClose())
     {
@@ -248,6 +264,19 @@ int main()
                 lights[currentLight].outerCutOff = cosf(fmaxf(angle + 5.0f * DEG2RAD, 10.0f * DEG2RAD));
             }
         }
+        if (IsKeyPressed(KEY_PAGE_UP)) {
+            currentObject = (currentObject + 1) % objects.size();
+        }
+        if (IsKeyPressed(KEY_PAGE_DOWN)) {
+            currentObject = (currentObject - 1 + objects.size()) % objects.size();
+        }
+        if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
+            objects[currentObject].lightingModel = (objects[currentObject].lightingModel + 1) % 3;
+        }
+        if (IsKeyPressed(KEY_LEFT_BRACKET)) {
+            objects[currentObject].lightingModel = (objects[currentObject].lightingModel - 1 + 3) % 3;
+        }
+
 
         if (IsKeyPressed(KEY_H)) showHelp = !showHelp;
 
@@ -267,8 +296,14 @@ int main()
         ClearBackground(RAYWHITE);
 
         BeginMode3D(camera);
+        for (const auto& obj : objects) {
+            SetShaderValue(shader, lightingModelLoc, &obj.lightingModel, SHADER_UNIFORM_INT);
+            DrawModel(obj.model, obj.position, obj.scale, obj.color);
+        }
+        int floorLighting = PHONG;
+        SetShaderValue(shader, lightingModelLoc, &floorLighting, SHADER_UNIFORM_INT);
+
         DrawModel(floor, (Vector3) { 0, -0.01f, 0 }, 1.0f, WHITE);
-        for (const auto& obj : objects) DrawModel(obj.model, obj.position, obj.scale, obj.color);
 
         for (int i = 0; i < (int)lights.size(); i++) {
             if (!lights[i].enabled) continue;
@@ -286,7 +321,7 @@ int main()
         DrawFPS(10, 40);
 
         if (showHelp) {
-            DrawRectangle(10, 70, 420, 320, Fade(SKYBLUE, 0.8f));
+            DrawRectangle(10, 70, 420, 360, Fade(SKYBLUE, 0.8f));
             DrawText("Controls (H - help, Z - unlock mouse):", 20, 80, 16, BLACK);
 
             DrawText("CAMERA:", 20, 110, 14, DARKBLUE);
@@ -301,10 +336,20 @@ int main()
             DrawText("1,2,3   - Select Light | SPACE - Toggle", 20, 280, 14, DARKGRAY);
             DrawText("Arrows  - Intensity & Spot Angle", 20, 300, 14, DARKGRAY);
 
+            DrawText("OBJECT & LIGHTING:", 20, 330, 14, DARKBLUE);
+            DrawText("PG_UP/PG_DOWN - Select Object", 20, 350, 14, DARKGRAY);
+            DrawText("[ / ]         - Change Lighting Model", 20, 370, 14, DARKGRAY);
+
+
             if (currentLight < (int)lights.size()) {
                 const char* lightTypes[] = { "Point", "Directional", "Spot" };
-                DrawText(TextFormat("Selected: %s | Int: %.2f", lightTypes[currentLight], lights[currentLight].intensity),
-                    20, 340, 14, RED);
+                DrawText(TextFormat("Selected light: %s | Int: %.2f", lightTypes[currentLight], lights[currentLight].intensity),
+                    20, 400, 14, RED);
+            }
+            if(currentObject < (int)objects.size()){
+                const char* modelTypes[] = { "Phong", "Toon", "Oren-Nayar" };
+                DrawText(TextFormat("Selected object: %s | Model: %s", objects[currentObject].name.c_str(), modelTypes[objects[currentObject].lightingModel]),
+                    20, 420, 14, RED);
             }
         }
         EndDrawing();

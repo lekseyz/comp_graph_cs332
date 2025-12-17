@@ -14,6 +14,10 @@ uniform vec3 viewPos;
 #define LIGHT_DIRECTIONAL 1
 #define LIGHT_SPOT 2
 
+#define PHONG 0
+#define TOON 1
+#define OREN_NAYAR 2
+
 struct Light {
     int type;
     vec3 position;
@@ -34,50 +38,78 @@ uniform Light lights[MAX_LIGHTS];
 uniform vec3 ambient;
 uniform float shininess;
 uniform float specularStrength;
+uniform int lightingModel;
+uniform float roughness;
 
-vec3 calcPointLight(Light light, vec3 normal, vec3 fragPos, vec3 viewDir)
-{
-    vec3 lightDir = normalize(light.position - fragPos);
+vec3 phong(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 lightColor) {
     float diff = max(dot(normal, lightDir), 0.0);
-    vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
-    float distance = length(light.position - fragPos);
-    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
-    vec3 diffuse = light.color * diff * light.intensity;
-    vec3 specular = light.color * spec * specularStrength * light.intensity;
-    diffuse *= attenuation;
-    specular *= attenuation;
-    return (diffuse + specular);
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+    vec3 diffuse = lightColor * diff;
+    vec3 specular = lightColor * spec * specularStrength;
+    return diffuse + specular;
 }
 
-vec3 calcDirectionalLight(Light light, vec3 normal, vec3 viewDir)
-{
-    vec3 lightDir = normalize(-light.direction);
+vec3 toon(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 lightColor) {
     float diff = max(dot(normal, lightDir), 0.0);
-    vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
-    vec3 diffuse = light.color * diff * light.intensity;
-    vec3 specular = light.color * spec * specularStrength * light.intensity;
-    return (diffuse + specular);
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+    float toonDiff = floor(diff * 5.0) / 5.0;
+    float toonSpec = floor(spec * 3.0) / 3.0;
+    return lightColor * toonDiff + lightColor * toonSpec * specularStrength;
 }
 
-vec3 calcSpotLight(Light light, vec3 normal, vec3 fragPos, vec3 viewDir)
-{
-    vec3 lightDir = normalize(light.position - fragPos);
-    float theta = dot(lightDir, normalize(-light.direction));
-    float epsilon = light.cutOff - light.outerCutOff;
-    float spotIntensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
-    float diff = max(dot(normal, lightDir), 0.0);
-    vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
-    float distance = length(light.position - fragPos);
-    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
-    vec3 diffuse = light.color * diff * light.intensity;
-    vec3 specular = light.color * spec * specularStrength * light.intensity;
-    diffuse *= attenuation * spotIntensity;
-    specular *= attenuation * spotIntensity;
-    return (diffuse + specular);
+vec3 orenNayar(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 lightColor) {
+    float LdotV = dot(lightDir, viewDir);
+    float NdotL = max(0.0, dot(normal, lightDir));
+    float NdotV = max(0.0, dot(normal, viewDir));
+    
+    float s = LdotV - NdotL * NdotV;
+    float t = mix(1.0, max(NdotL, NdotV), step(0.0, s));
+    
+    float sigma2 = roughness * roughness;
+    float A = 1.0 - 0.5 * (sigma2 / (sigma2 + 0.33));
+    float B = 0.45 * (sigma2 / (sigma2 + 0.09));
+    
+    return lightColor * NdotL * (A + B * s / t);
 }
+
+vec3 calcLight(Light light, vec3 normal, vec3 fragPos, vec3 viewDir) {
+    vec3 lightDir;
+    float attenuation = 1.0;
+    float spotIntensity = 1.0;
+
+    if (light.type == LIGHT_POINT) {
+        lightDir = normalize(light.position - fragPos);
+        float distance = length(light.position - fragPos);
+        attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+    } else if (light.type == LIGHT_DIRECTIONAL) {
+        lightDir = normalize(-light.direction);
+    } else if (light.type == LIGHT_SPOT) {
+        lightDir = normalize(light.position - fragPos);
+        float theta = dot(lightDir, normalize(-light.direction));
+        float epsilon = light.cutOff - light.outerCutOff;
+        spotIntensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+        float distance = length(light.position - fragPos);
+        attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+    }
+
+    vec3 result = vec3(0.0);
+    switch (lightingModel) {
+        case PHONG:
+            result = phong(lightDir, viewDir, normal, light.color);
+            break;
+        case TOON:
+            result = toon(lightDir, viewDir, normal, light.color);
+            break;
+        case OREN_NAYAR:
+            result = orenNayar(lightDir, viewDir, normal, light.color);
+            break;
+    }
+
+    return result * light.intensity * attenuation * spotIntensity;
+}
+
 
 void main()
 {
@@ -87,18 +119,7 @@ void main()
     
     for(int i = 0; i < lightsCount && i < MAX_LIGHTS; i++)
     {
-        if(lights[i].type == LIGHT_POINT)
-        {
-            result += calcPointLight(lights[i], normal, fragPosition, viewDir);
-        }
-        else if(lights[i].type == LIGHT_DIRECTIONAL)
-        {
-            result += calcDirectionalLight(lights[i], normal, viewDir);
-        }
-        else if(lights[i].type == LIGHT_SPOT)
-        {
-            result += calcSpotLight(lights[i], normal, fragPosition, viewDir);
-        }
+        result += calcLight(lights[i], normal, fragPosition, viewDir);
     }
     
     vec4 texelColor = texture(texture0, fragTexCoord);
